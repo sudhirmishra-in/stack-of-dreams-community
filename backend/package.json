@@ -1,0 +1,22 @@
+{
+  "name": "stack-of-dreams-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "esbuild src/handler.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/handler.mjs --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\""
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.1152.0",
+    "aws-jwt-verify": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.164",
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

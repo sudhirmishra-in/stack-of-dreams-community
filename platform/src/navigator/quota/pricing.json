@@ -1,0 +1,9 @@
+{
+  "version": "2026-10-19-unverified",
+  "note": "ESTIMATES. Verify against https://aws.amazon.com/bedrock/pricing/ before relying on these. Used for pilot spend tracking, never for billing.",
+  "currency": "USD",
+  "models": {
+    "amazon.nova-micro-v1:0": { "inputPer1kUsd": 0.000035, "outputPer1kUsd": 0.00014, "verified": false },
+    "amazon.nova-lite-v1:0":  { "inputPer1kUsd": 0.00006,  "outputPer1kUsd": 0.00024, "verified": false }
+  }
+}

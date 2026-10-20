@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Chat API for the Stack of Dreams Labs UI (Lambda Function URL -> AgentCore harness). The Lambda verifies Cognito access tokens itself.
+
+Parameters:
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito user pool ID, e.g. us-east-2_xxxxxxxxx
+  CognitoClientId:
+    Type: String
+    Description: App client ID of the UI (checked against the access token's client_id claim)
+  AssistantHarnessArn:
+    Type: String
+    Description: ARN of the AgentCore harness that serves agentId "assistant"
+  AssistantRuntimeArn:
+    Type: String
+    Description: ARN of the runtime behind that harness (deployed-state.json "agentRuntimeArn")
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: https://agents.sudhirmishra.in,http://localhost:5173
+    Description: Browser origins allowed by CORS
+
+Resources:
+  ChatFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: esm
+        Target: es2022
+        OutExtension:
+          - ".js=.mjs"
+        EntryPoints:
+          - src/handler.ts
+        Banner:
+          - "js=import{createRequire}from'module';const require=createRequire(import.meta.url);"
+    Properties:
+      CodeUri: .
+      Handler: handler.handler
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 60
+      # Cost/abuse ceiling: the URL is public (requests are rejected in code without a valid token),
+      # so cap parallel executions instead of leaving it unlimited.
+      ReservedConcurrentExecutions: 10
+      Environment:
+        Variables:
+          AGENT_REGION: !Ref AWS::Region
+          AGENT_HARNESS_MAP: !Sub '{"assistant":"${AssistantHarnessArn}"}'
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          COGNITO_CLIENT_ID: !Ref CognitoClientId
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock-agentcore:InvokeHarness
+                - bedrock-agentcore:InvokeAgentRuntime
+              Resource:
+                - !Ref AssistantHarnessArn
+                - !Ref AssistantRuntimeArn
+      # AuthType NONE only means "no IAM signing"; every request is rejected in code unless it
+      # carries a valid Cognito access token for this app client.
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins: !Ref AllowedOrigins
+          AllowMethods: [POST]
+          AllowHeaders: [authorization, content-type]
+          MaxAge: 600
+
+  # Newer Function URLs also need this permission for public (AuthType NONE) invocation.
+  ChatFunctionUrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ChatFunction
+      Action: lambda:InvokeFunction
+      Principal: '*'
+      InvokedViaFunctionUrl: true
+
+Outputs:
+  ApiBaseUrl:
+    Description: Set as VITE_API_BASE_URL in the frontend (the app trims the trailing slash and appends /chat)
+    Value: !GetAtt ChatFunctionUrl.FunctionUrl

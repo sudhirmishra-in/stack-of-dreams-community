@@ -1,0 +1,45 @@
+# ---- Secrets and local configuration: NEVER commit ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+credentials
+credentials.*
+.aws/
+.npmrc
+samconfig.toml
+.env.local
+
+# ---- Dependencies ----
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# ---- Build output and caches ----
+dist/
+build/
+.vite/
+.aws-sam/
+cdk.out/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.tsbuildinfo
+coverage/
+
+# ---- AgentCore CLI local state, logs and staging ----
+# deployed-state.json embeds account/role ARNs and the repository is public, so deployment state stays local.
+.cli/
+.cache/
+platform/agentcore/app/community_navigator/navigator/
+
+# ---- OS / editor ----
+.DS_Store
+*.log
+.idea/
+.vscode/

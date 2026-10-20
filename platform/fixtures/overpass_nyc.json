@@ -1,0 +1,511 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-10-19T23:30:21Z",
+    "timestamp_areas_base": "2026-10-19T18:25:02Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 357622057,
+  "lat": 40.8040320,
+  "lon": -73.9549316,
+  "tags": {
+    "addr:city": "New York",
+    "addr:housenumber": "252",
+    "addr:postcode": "10026",
+    "addr:state": "NY",
+    "addr:street": "West 116th Street",
+    "amenity": "social_facility",
+    "name": "Community Kitchen and Pantry",
+    "operator": "Food Bank for NYC",
+    "social_facility": "food_bank",
+    "website": "https://www.foodbanknyc.org/community-kitchen/"
+  }
+},
+{
+  "type": "node",
+  "id": 2567052658,
+  "lat": 40.6689208,
+  "lon": -73.9534859,
+  "tags": {
+    "amenity": "social_facility",
+    "description": "community fridge",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 2605399161,
+  "lat": 40.6930740,
+  "lon": -73.9683710,
+  "tags": {
+    "amenity": "social_facility",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 2882557568,
+  "lat": 40.7617545,
+  "lon": -73.8125082,
+  "tags": {
+    "addr:housenumber": "41-42",
+    "addr:postcode": "11355",
+    "addr:street": "Murray Street",
+    "amenity": "social_facility",
+    "name": "Food Distribution Center",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 5487146969,
+  "lat": 40.6782853,
+  "lon": -73.9827265,
+  "tags": {
+    "amenity": "social_facility",
+    "name": "CHiPS",
+    "phone": "+1 718 237 2962",
+    "social_facility": "soup_kitchen",
+    "website": "https://chipsonline.org/"
+  }
+},
+{
+  "type": "node",
+  "id": 7161218432,
+  "lat": 40.6788153,
+  "lon": -73.9641433,
+  "tags": {
+    "amenity": "social_facility",
+    "name": "Hope City Empowerment Center",
+    "phone": "+1-718-857-5698",
+    "social_facility": "soup_kitchen",
+    "social_facility:for": "underprivileged;senior",
+    "website": "https://www.hopecityec.org"
+  }
+},
+{
+  "type": "node",
+  "id": 7258410330,
+  "lat": 40.7264773,
+  "lon": -73.9806626,
+  "tags": {
+    "amenity": "social_facility",
+    "description": "Free vegan food for community, every Saturday afternoon. ",
+    "name": "Chilis on Wheels",
+    "opening_hours": "Sa 14:00-16:00",
+    "operator": "Chilis on Wheels",
+    "operator:type": "ngo",
+    "social_facility": "food_bank",
+    "social_facility:for": "community",
+    "website": "https://www.chilisonwheels.org/chapters/new-york-city/"
+  }
+},
+{
+  "type": "node",
+  "id": 8486759789,
+  "lat": 40.7254855,
+  "lon": -73.9928802,
+  "tags": {
+    "alt_name": "Overthrow Community Fridge",
+    "amenity": "social_facility",
+    "contact:instagram": "@overthrowcommunityfridge",
+    "name": "Plant-Based Community Fridge",
+    "operator": "Overthrow",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 8572644586,
+  "lat": 40.6702071,
+  "lon": -73.9917883,
+  "tags": {
+    "amenity": "social_facility",
+    "name": "Tiny Purple Pantry",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 8762272650,
+  "lat": 40.6601105,
+  "lon": -73.9942396,
+  "tags": {
+    "amenity": "social_facility",
+    "description": "free public refrigerator",
+    "name": "Refrigerador Comunitario",
+    "operator": "Mixteca",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 8925299255,
+  "lat": 40.7164243,
+  "lon": -73.9877507,
+  "tags": {
+    "addr:city": "New York",
+    "addr:housenumber": "384",
+    "addr:postcode": "10002",
+    "addr:state": "NY",
+    "addr:street": "Grand Street",
+    "amenity": "social_facility",
+    "name": "UA3 Community First Food Pantry",
+    "opening_hours": "Mo,Th 08:00-17:00",
+    "operator": "UA3",
+    "social_facility": "food_bank",
+    "website": "https://www.ua3now.org/"
+  }
+},
+{
+  "type": "node",
+  "id": 9008487124,
+  "lat": 40.6828688,
+  "lon": -73.9634527,
+  "tags": {
+    "amenity": "social_facility",
+    "name": "Fulton Street Community Fridge",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 9121304277,
+  "lat": 40.6483926,
+  "lon": -73.9775190,
+  "tags": {
+    "amenity": "social_facility",
+    "name": "Tiny Purple Pantry",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 9545977368,
+  "lat": 40.6600266,
+  "lon": -73.9532767,
+  "tags": {
+    "amenity": "social_facility",
+    "operator": "PLG Brooklyn",
+    "refrigerated": "yes",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 10107514719,
+  "lat": 40.6252442,
+  "lon": -73.9969674,
+  "tags": {
+    "amenity": "social_facility",
+    "name": "Tomche Shabbos",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 10182432693,
+  "lat": 40.7172174,
+  "lon": -73.9996218,
+  "tags": {
+    "addr:city": "New York",
+    "addr:housenumber": "96",
+    "addr:postcode": "10013",
+    "addr:state": "NY",
+    "addr:street": "Baxter Street",
+    "amenity": "social_facility",
+    "contact:instagram": "https://www.instagram.com/chinatown.communityfridge/",
+    "name": "Chinatown Community Fridge & Pantry",
+    "opening_hours": "Mo-Su 09:00-18:00",
+    "operator:type": "community",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 10197719081,
+  "lat": 40.6620617,
+  "lon": -73.9947136,
+  "tags": {
+    "amenity": "social_facility",
+    "name": "Tiny Purple Pantry",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 12060132666,
+  "lat": 40.7897967,
+  "lon": -73.9408772,
+  "tags": {
+    "addr:housenumber": "340",
+    "addr:postcode": "10029",
+    "addr:street": "East 106th Street",
+    "amenity": "social_facility",
+    "name": "Macedonia Pantry",
+    "opening_hours": "Fr 10:00-11:30",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 12154563494,
+  "lat": 40.7919483,
+  "lon": -73.9473268,
+  "tags": {
+    "addr:housenumber": "125",
+    "addr:postcode": "10029",
+    "addr:street": "East 105th Street",
+    "amenity": "social_facility",
+    "name": "Saint Cecilia's Food Pantry",
+    "opening_hours": "We 09:00-12:00",
+    "phone": "+1 212 348 0488",
+    "social_facility": "food_bank",
+    "website": "https://cccsny.org/services/neighborhood-centers-east-harlem"
+  }
+},
+{
+  "type": "node",
+  "id": 12202831609,
+  "lat": 40.7660451,
+  "lon": -73.9134806,
+  "tags": {
+    "amenity": "social_facility",
+    "name": "Astoria Food Pantry",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 12493102987,
+  "lat": 40.5817204,
+  "lon": -73.9616806,
+  "tags": {
+    "addr:housenumber": "225",
+    "addr:street": "Neptune Avenue",
+    "amenity": "social_facility",
+    "check_date": "2025-01-11",
+    "name": "Apna Food Pantry Brighton Beach",
+    "phone": "+1 718-513-4700",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 12554317124,
+  "lat": 40.7018115,
+  "lon": -73.9155208,
+  "tags": {
+    "addr:city": "Brooklyn",
+    "addr:housenumber": "184",
+    "addr:postcode": "11237",
+    "addr:state": "NY",
+    "addr:street": "Wyckoff Avenue",
+    "address": "184 Wyckoff Avenue, Brooklyn, NY 11237",
+    "amenity": "social_facility",
+    "name": "Food Support Connections",
+    "opening_hours": "\"by appointment\"",
+    "operator": "Food Support Connections",
+    "social_facility": "food_bank",
+    "social_facility:for": "underprivileged"
+  }
+},
+{
+  "type": "node",
+  "id": 12554351331,
+  "lat": 40.7295500,
+  "lon": -73.9559635,
+  "tags": {
+    "addr:street": "123 Milton Street, Brooklyn, NY 11222",
+    "amenity": "social_facility",
+    "name": "Greenpoint Hunger Program",
+    "opening_hours": "We 18:00-19:00, Th 16:00-19:00",
+    "operator": "Greenpoint Hunger Program",
+    "social_facility": "food_bank",
+    "social_facility:for": "underprivileged"
+  }
+},
+{
+  "type": "node",
+  "id": 12554381248,
+  "lat": 40.7069715,
+  "lon": -73.9575568,
+  "tags": {
+    "addr:city": "Brooklyn",
+    "addr:housenumber": "240",
+    "addr:postcode": "11211",
+    "addr:state": "NY",
+    "addr:street": "Division Avenue",
+    "amenity": "social_facility",
+    "name": "St. John's Bread and Life: Mobile Soup Kitchen",
+    "operating_hours": "8:00-14:00 hours vary by service provided",
+    "operator": "St. John's Bread and Life: Mobile Soup Kitchen",
+    "operator:type": "public",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 12554389753,
+  "lat": 40.7053954,
+  "lon": -73.9559482,
+  "tags": {
+    "addr:city": "Brooklyn",
+    "addr:housenumber": "263",
+    "addr:postcode": "11211",
+    "addr:state": "NY",
+    "addr:street": "Marcy Avenue",
+    "amenity": "social_facility",
+    "name": "Transfiguration Church",
+    "operating_hours": "Th 9:00-12:00",
+    "operator": "Transfiguration Church",
+    "operator:type": "public",
+    "social_facility": "food_bank",
+    "social_facility:for": "underprivileged"
+  }
+},
+{
+  "type": "node",
+  "id": 12554403033,
+  "lat": 40.7068642,
+  "lon": -73.9441822,
+  "tags": {
+    "addr:city": "Brooklyn",
+    "addr:housenumber": "153",
+    "addr:postcode": "11206",
+    "addr:state": "NY",
+    "addr:street": "Johnson Avenue",
+    "addr:unit": "A",
+    "amenity": "social_facility",
+    "name": "Trinity Human Services Corp.",
+    "operating_hours": "Tu-Fr 9:00-16:00",
+    "operator": "Trinity Human Services Corp.",
+    "operator:type": "public",
+    "social_facility": "food_bank",
+    "social_facility:for": "underprivileged"
+  }
+},
+{
+  "type": "node",
+  "id": 12554598806,
+  "lat": 40.6950366,
+  "lon": -73.9362832,
+  "tags": {
+    "addr:city": "Brooklyn",
+    "addr:housenumber": "333",
+    "addr:postcode": "11206",
+    "addr:state": "NY",
+    "addr:street": "Hart Street",
+    "amenity": "social_facility",
+    "name": "Catholic Charaties Brooklyn and Queens",
+    "operator": "Catholic Charaties Brooklyn and Queens",
+    "operator:type": "public",
+    "social_facility": "food_bank",
+    "social_facility:for": "underprivileged"
+  }
+},
+{
+  "type": "node",
+  "id": 12732221751,
+  "lat": 40.6323425,
+  "lon": -73.9954444,
+  "tags": {
+    "addr:housenumber": "5402",
+    "addr:postcode": "11219",
+    "addr:street": "New Utrecht Avenue",
+    "amenity": "social_facility",
+    "branch": "Boro Park",
+    "diet:kosher": "yes",
+    "name": "Masbia",
+    "name:en": "Masbia",
+    "name:he": "משבּיע",
+    "operator": "Masbia",
+    "operator:wikidata": "Q6782826",
+    "social_facility": "food_bank",
+    "social_facility:for": "underprivileged",
+    "website": "https://www.masbiaboropark.org"
+  }
+},
+{
+  "type": "node",
+  "id": 13325175365,
+  "lat": 40.7541284,
+  "lon": -73.9371589,
+  "tags": {
+    "amenity": "social_facility",
+    "name": "9 Million Reasons",
+    "social_facility": "soup_kitchen",
+    "website": "https://9millionreasons.nyc/"
+  }
+},
+{
+  "type": "node",
+  "id": 13703645668,
+  "lat": 40.7442091,
+  "lon": -73.9811409,
+  "tags": {
+    "addr:city": "New York",
+    "addr:housenumber": "171",
+    "addr:postcode": "10016",
+    "addr:state": "NY",
+    "addr:street": "Lexington Avenue",
+    "alt_name": "The Linda and Jerry Spitzer Fulfillment Center",
+    "amenity": "social_facility",
+    "name": "Spitzer Fulfillment Center",
+    "operator": "Met Council",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "node",
+  "id": 14049465301,
+  "lat": 40.7252196,
+  "lon": -73.9813118,
+  "tags": {
+    "addr:city": "New York",
+    "addr:postcode": "10009",
+    "addr:state": "NY",
+    "addr:street": "East 7th Street",
+    "amenity": "social_facility",
+    "contact:instagram": "tompkins.distro",
+    "name": "Tompkins Distro",
+    "note": "Mutual aid food distribution for asylum seekers, unhoused neighbors, and anyone else in need, every Saturday",
+    "opening_hours": "Sa 11:00-12:00",
+    "social_facility": "food_bank"
+  }
+},
+{
+  "type": "way",
+  "id": 271279157,
+  "center": {
+    "lat": 40.7957850,
+    "lon": -73.9492267
+  },
+  "tags": {
+    "addr:housenumber": "8",
+    "addr:postcode": "10029",
+    "addr:street": "East 109th Street",
+    "amenity": "social_facility",
+    "building": "civic",
+    "building:levels": "1",
+    "building:levels:underground": "1",
+    "email": "Communications@NYCommonPantry.org",
+    "fax": "+1 917 7209665",
+    "height": "11.5",
+    "name": "NY Common Pantry",
+    "nycdoitt:bin": "1051594",
+    "opening_hours": "We-Sa 11:00-14:30",
+    "phone": "+1 917-720-9700",
+    "roof:shape": "flat",
+    "social_facility": "food_bank",
+    "website": "https://nycommonpantry.org"
+  }
+}
+
+  ]
+}

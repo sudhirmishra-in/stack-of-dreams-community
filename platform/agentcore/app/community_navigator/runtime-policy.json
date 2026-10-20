@@ -1,0 +1,36 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadDirectoryData",
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem", "dynamodb:BatchGetItem", "dynamodb:Query"],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-2:160102057204:table/navigator-data-pilot",
+        "arn:aws:dynamodb:us-east-2:160102057204:table/navigator-data-pilot/index/*"
+      ]
+    },
+    {
+      "Sid": "CacheZipCentroidsOnly",
+      "Effect": "Allow",
+      "Action": ["dynamodb:PutItem"],
+      "Resource": "arn:aws:dynamodb:us-east-2:160102057204:table/navigator-data-pilot",
+      "Condition": { "ForAllValues:StringLike": { "dynamodb:LeadingKeys": ["ZIP#*"] } }
+    },
+    {
+      "Sid": "InvokeOrchestratorModel",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": [
+        "arn:aws:bedrock:us-east-2:160102057204:inference-profile/us.amazon.nova-lite-v1:0",
+        "arn:aws:bedrock:*::foundation-model/amazon.nova-lite-v1:0"
+      ]
+    },
+    {
+      "Sid": "LocationLookups",
+      "Effect": "Allow",
+      "Action": ["geo-places:Geocode", "geo-routes:CalculateRoutes"],
+      "Resource": "*"
+    }
+  ]
+}

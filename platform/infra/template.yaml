@@ -1,0 +1,510 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Community Resource Navigator pilot platform (us-east-2): DynamoDB, ingestion Lambda + schedules,
+  authenticated API (Lambda Function URL), alarms, dashboard, restricted map key, budget.
+  The AgentCore runtime "community_navigator" is deployed separately with the agentcore CLI (platform/agentcore).
+
+Parameters:
+  EnvName:
+    Type: String
+    Default: pilot
+    AllowedPattern: '^[a-z][a-z0-9-]{1,15}$'
+  CognitoUserPoolId:
+    Type: String
+    Description: Existing pool, e.g. us-east-2_xxxxxxxxx
+  CognitoClientId:
+    Type: String
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: https://agents.sudhirmishra.in,http://localhost:5173
+  AgentRuntimeArn:
+    Type: String
+    Default: ''
+    Description: ARN of the community_navigator runtime. Leave empty until it is deployed (the assistant then answers 503).
+  OrchestratorModelId:
+    Type: String
+    Default: us.amazon.nova-lite-v1:0
+  ClassifierModelId:
+    Type: String
+    Default: us.amazon.nova-micro-v1:0
+  MockMode:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+  AssistantEnabled:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  IngestContact:
+    Type: String
+    Description: Contact (email or URL) put in the User-Agent for public data sources, as their usage policies request.
+  SchedulesState:
+    Type: String
+    Default: ENABLED
+    AllowedValues: [ENABLED, DISABLED]
+  ApiReservedConcurrency:
+    Type: Number
+    Default: 30
+    Description: >
+      Hard ceiling on parallel API invocations (cost and abuse guard). A map view fires 20-40 parallel
+      tile/sprite/glyph requests through the API, so this must not be set too low.
+  AlarmEmail:
+    Type: String
+    Default: ''
+    Description: Optional. Receives alarm and budget notifications (confirm the SNS subscription email).
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 25
+Conditions:
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, '']]
+  HasRuntime: !Not [!Equals [!Ref AgentRuntimeArn, '']]
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [arm64]
+    MemorySize: 512
+    LoggingConfig:
+      LogFormat: Text
+    Tags:
+      Project: community-navigator
+      Environment: !Ref EnvName
+
+Resources:
+  # ------------------------------------------------------------------ data
+  DataTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub navigator-data-${EnvName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: PK, AttributeType: S}
+        - {AttributeName: SK, AttributeType: S}
+        - {AttributeName: gsi1pk, AttributeType: S}
+        - {AttributeName: gsi1sk, AttributeType: S}
+        - {AttributeName: gsi2pk, AttributeType: S}
+        - {AttributeName: gsi2sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: PK, KeyType: HASH}
+        - {AttributeName: SK, KeyType: RANGE}
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema: [{AttributeName: gsi1pk, KeyType: HASH}, {AttributeName: gsi1sk, KeyType: RANGE}]
+          Projection: {ProjectionType: ALL}
+        - IndexName: gsi2
+          KeySchema: [{AttributeName: gsi2pk, KeyType: HASH}, {AttributeName: gsi2sk, KeyType: RANGE}]
+          Projection: {ProjectionType: KEYS_ONLY}
+      TimeToLiveSpecification: {AttributeName: ttl, Enabled: true}   # sync run history only
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+      SSESpecification: {SSEEnabled: true}
+      Tags: [{Key: Project, Value: community-navigator}, {Key: Environment, Value: !Ref EnvName}]
+
+  UsageTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub navigator-usage-${EnvName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: PK, AttributeType: S}
+        - {AttributeName: SK, AttributeType: S}
+      KeySchema:
+        - {AttributeName: PK, KeyType: HASH}
+        - {AttributeName: SK, KeyType: RANGE}
+      TimeToLiveSpecification: {AttributeName: ttl, Enabled: true}   # counters, reservations, slots
+      SSESpecification: {SSEEnabled: true}
+      Tags: [{Key: Project, Value: community-navigator}, {Key: Environment, Value: !Ref EnvName}]
+
+  # ------------------------------------------------------------------ ingestion
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      FunctionName: !Sub navigator-ingest-${EnvName}
+      CodeUri: .
+      Handler: navigator.ingest.handler.handler
+      Timeout: 300
+      ReservedConcurrentExecutions: 1          # sync runs must never overlap
+      Environment:
+        Variables:
+          ENV_NAME: !Ref EnvName
+          DATA_TABLE: !Ref DataTable
+          INGEST_CONTACT: !Ref IngestContact
+          SOURCE_OSM_ENABLED: 'true'
+          SOURCE_NYC_CFC_ENABLED: 'true'
+          SOURCE_211_ENABLED: 'false'          # stays off until 211 access is authorized
+          SEED_DEMO: 'true'
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Sid: ReadWriteDirectory
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Query, dynamodb:BatchGetItem]
+              Resource: [!GetAtt DataTable.Arn, !Sub '${DataTable.Arn}/index/*']
+      # Deliberately NO access to the usage table, Bedrock, AgentCore or Location.
+
+  IngestLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/navigator-ingest-${EnvName}
+      RetentionInDays: 30
+
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: scheduler.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: invoke-ingest
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt IngestFunction.Arn
+
+  # Incremental OSM daily; full weekly (the only run allowed to deactivate records); CFC monthly (quarterly data).
+  OsmIncrementalSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub navigator-osm-incremental-${EnvName}
+      ScheduleExpression: cron(15 6 * * ? *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: {Mode: FLEXIBLE, MaximumWindowInMinutes: 30}
+      State: !Ref SchedulesState
+      Target:
+        Arn: !GetAtt IngestFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: '{"sources":["osm"],"mode":"incremental"}'
+        RetryPolicy: {MaximumRetryAttempts: 1, MaximumEventAgeInSeconds: 3600}
+  OsmFullSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub navigator-osm-full-${EnvName}
+      ScheduleExpression: cron(45 5 ? * SUN *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: {Mode: FLEXIBLE, MaximumWindowInMinutes: 60}
+      State: !Ref SchedulesState
+      Target:
+        Arn: !GetAtt IngestFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: '{"sources":["osm"],"mode":"full"}'
+        RetryPolicy: {MaximumRetryAttempts: 1, MaximumEventAgeInSeconds: 7200}
+  CfcMonthlySchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub navigator-nyc-cfc-${EnvName}
+      ScheduleExpression: cron(30 7 2 * ? *)
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow: {Mode: 'OFF'}
+      State: !Ref SchedulesState
+      Target:
+        Arn: !GetAtt IngestFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: '{"sources":["nyc-cfc"],"mode":"auto","seedDemo":false}'
+        RetryPolicy: {MaximumRetryAttempts: 2, MaximumEventAgeInSeconds: 7200}
+
+  # ------------------------------------------------------------------ API
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      FunctionName: !Sub navigator-api-${EnvName}
+      CodeUri: .
+      Handler: navigator.api.app.handler
+      Timeout: 60
+      ReservedConcurrentExecutions: !Ref ApiReservedConcurrency
+      Environment:
+        Variables:
+          ENV_NAME: !Ref EnvName
+          DATA_TABLE: !Ref DataTable
+          USAGE_TABLE: !Ref UsageTable
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          COGNITO_CLIENT_ID: !Ref CognitoClientId
+          ADMIN_GROUP: pilot-admin
+          ALLOWED_ORIGINS: !Join [',', !Ref AllowedOrigins]
+          AGENT_RUNTIME_ARN: !Ref AgentRuntimeArn
+          AGENT_REGION: !Ref AWS::Region
+          ORCHESTRATOR_MODEL_ID: !Ref OrchestratorModelId
+          CLASSIFIER_MODEL_ID: !Ref ClassifierModelId
+          MOCK_MODE: !Ref MockMode
+          ASSISTANT_ENABLED: !Ref AssistantEnabled
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Sid: ReadDirectory
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:BatchGetItem, dynamodb:Query]
+              Resource: [!GetAtt DataTable.Arn, !Sub '${DataTable.Arn}/index/*']
+            - Sid: CacheZipCentroidsOnly
+              Effect: Allow
+              Action: dynamodb:PutItem
+              Resource: !GetAtt DataTable.Arn
+              Condition:
+                ForAllValues:StringLike: {'dynamodb:LeadingKeys': ['ZIP#*']}
+            - Sid: UsageLedger
+              Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:BatchGetItem, dynamodb:Query, dynamodb:ConditionCheckItem]
+              Resource: !GetAtt UsageTable.Arn
+            - Sid: ClassifierModelOnly
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ClassifierModelId}'
+                - 'arn:aws:bedrock:*::foundation-model/amazon.nova-micro-v1:0'
+            - Sid: Location
+              Effect: Allow
+              Action: [geo-places:Geocode, geo-routes:CalculateRoutes]
+              Resource: '*'
+            # Read-only map data relayed to signed-in users (account policy blocks browser API keys, so the
+            # API fetches map data with its own role and the browser never holds AWS credentials or keys).
+            - Sid: MapDataReadOnly
+              Effect: Allow
+              Action: [geo-maps:GetStyleDescriptor, geo-maps:GetTile, geo-maps:GetGlyphs, geo-maps:GetSprites]
+              Resource: '*'
+        - !If
+          - HasRuntime
+          - Version: '2012-10-17'
+            Statement:
+              - Sid: InvokeCommunityNavigatorRuntimeOnly
+                Effect: Allow
+                # ForUser is required because every call passes runtimeUserId (the hashed Cognito sub).
+                Action: [bedrock-agentcore:InvokeAgentRuntime, bedrock-agentcore:InvokeAgentRuntimeForUser]
+                Resource: [!Ref AgentRuntimeArn, !Sub '${AgentRuntimeArn}/*']
+          - !Ref AWS::NoValue
+      # AuthType NONE only means "no IAM request signing". The handler rejects every /api/v1 request
+      # (except /health) that lacks a valid Cognito access token for this app client.
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins: !Ref AllowedOrigins
+          AllowMethods: [GET, POST, PUT]
+          AllowHeaders: [authorization, content-type, x-correlation-id]
+          ExposeHeaders: [x-correlation-id, retry-after]
+          MaxAge: 600
+      # Deliberately NO access to testagent, its harness, or any other runtime.
+
+  ApiFunctionUrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: '*'
+      InvokedViaFunctionUrl: true
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/navigator-api-${EnvName}
+      RetentionInDays: 30
+
+  # ------------------------------------------------------------------ monitoring
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub navigator-alarms-${EnvName}
+  AlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlarmEmail
+    Properties:
+      TopicArn: !Ref AlarmTopic
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+
+  ApiErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub navigator-${EnvName}-api-lambda-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{Name: FunctionName, Value: !Ref ApiFunction}]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+  IngestErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub navigator-${EnvName}-ingest-lambda-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{Name: FunctionName, Value: !Ref IngestFunction}]
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+  SyncFailedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub navigator-${EnvName}-sync-failed
+      AlarmDescription: A data source sync failed or returned a suspiciously small result.
+      Namespace: Navigator
+      MetricName: SyncFailed
+      Dimensions: [{Name: source, Value: osm}]
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+  # No successful ingest invocation for 3 days => the directory is going stale.
+  IngestStaleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub navigator-${EnvName}-ingest-not-running
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions: [{Name: FunctionName, Value: !Ref IngestFunction}]
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopic]
+  RuntimeLimitAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub navigator-${EnvName}-runtime-exceeded-limits
+      AlarmDescription: The agent runtime reported more model calls than the gateway allowed. Investigate immediately.
+      Namespace: Navigator
+      MetricName: RuntimeLimitExceeded
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+  LedgerFailuresAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub navigator-${EnvName}-usage-ledger-failures
+      AlarmDescription: Settlement or release failed; spend tracking may be conservative.
+      Metrics:
+        - Id: settle
+          MetricStat: {Metric: {Namespace: Navigator, MetricName: SettleFailed}, Period: 300, Stat: Sum}
+          ReturnData: false
+        - Id: release
+          MetricStat: {Metric: {Namespace: Navigator, MetricName: ReleaseFailed}, Period: 300, Stat: Sum}
+          ReturnData: false
+        - Id: total
+          Expression: FILL(settle, 0) + FILL(release, 0)
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+  AgentFailuresAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub navigator-${EnvName}-agent-invoke-failures
+      Namespace: Navigator
+      MetricName: AgentInvokeFailed
+      Statistic: Sum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+  # NOTE: alarms notify; they never stop spend. Hard stops are the server-side quotas, the kill switch
+  # (PUT /api/v1/admin/switch), disabling users, and ApiReservedConcurrency.
+  TokenSpikeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub navigator-${EnvName}-token-spike
+      AlarmDescription: More than 600k model tokens in an hour (the pilot's daily design ceiling is ~9M, normal use is far lower).
+      Namespace: Navigator
+      MetricName: ModelTokens
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 600000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub navigator-${EnvName}
+      DashboardBody: !Sub |
+        {"widgets":[
+          {"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"title":"Assistant requests / tokens","region":"${AWS::Region}","stat":"Sum","period":3600,
+            "metrics":[["Navigator","AssistantRequests"],["Navigator","ModelTokens",{"yAxis":"right"}]]}},
+          {"type":"metric","x":12,"y":0,"width":12,"height":6,"properties":{"title":"Estimated model spend (USD, estimate only)","region":"${AWS::Region}","stat":"Sum","period":3600,
+            "metrics":[["Navigator","EstimatedSpendUsd"]]}},
+          {"type":"metric","x":0,"y":6,"width":12,"height":6,"properties":{"title":"Errors and guard trips","region":"${AWS::Region}","stat":"Sum","period":300,
+            "metrics":[["AWS/Lambda","Errors","FunctionName","${ApiFunction}"],["Navigator","AgentInvokeFailed"],["Navigator","RuntimeLimitExceeded"],["Navigator","SettleFailed"],["Navigator","ReleaseFailed"]]}},
+          {"type":"metric","x":12,"y":6,"width":12,"height":6,"properties":{"title":"Data sync","region":"${AWS::Region}","stat":"Sum","period":86400,
+            "metrics":[["Navigator","SyncFailed","source","osm"],["Navigator","SyncSuspicious","source","osm"],["Navigator","RecordsRejected","source","osm"],["AWS/Lambda","Invocations","FunctionName","${IngestFunction}"]]}},
+          {"type":"metric","x":0,"y":12,"width":12,"height":6,"properties":{"title":"API latency (ms)","region":"${AWS::Region}","stat":"p95","period":300,
+            "metrics":[["AWS/Lambda","Duration","FunctionName","${ApiFunction}"]]}},
+          {"type":"metric","x":12,"y":12,"width":12,"height":6,"properties":{"title":"API throttles / concurrency","region":"${AWS::Region}","stat":"Maximum","period":300,
+            "metrics":[["AWS/Lambda","Throttles","FunctionName","${ApiFunction}"],["AWS/Lambda","ConcurrentExecutions","FunctionName","${ApiFunction}"]]}}
+        ]}
+
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub navigator-${EnvName}-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: {Amount: !Ref MonthlyBudgetUsd, Unit: USD}
+      NotificationsWithSubscribers:
+        - Notification: {NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 50, ThresholdType: PERCENTAGE}
+          Subscribers: [{SubscriptionType: SNS, Address: !Ref AlarmTopic}]
+        - Notification: {NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 80, ThresholdType: PERCENTAGE}
+          Subscribers: [{SubscriptionType: SNS, Address: !Ref AlarmTopic}]
+        - Notification: {NotificationType: FORECASTED, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE}
+          Subscribers: [{SubscriptionType: SNS, Address: !Ref AlarmTopic}]
+
+  BudgetsPublishPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref AlarmTopic]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowBudgets
+            Effect: Allow
+            Principal: {Service: budgets.amazonaws.com}
+            Action: sns:Publish
+            Resource: !Ref AlarmTopic
+          - Sid: AllowCloudWatchAlarms
+            Effect: Allow
+            Principal: {Service: cloudwatch.amazonaws.com}
+            Action: sns:Publish
+            Resource: !Ref AlarmTopic
+
+Outputs:
+  ApiBaseUrl:
+    Description: Frontend VITE_PILOT_API_BASE_URL (the app appends /api/v1/...)
+    Value: !GetAtt ApiFunctionUrl.FunctionUrl
+  DataTableName:
+    Value: !Ref DataTable
+  UsageTableName:
+    Value: !Ref UsageTable
+  DashboardName:
+    Value: !Ref Dashboard
+  AlarmTopicArn:
+    Value: !Ref AlarmTopic

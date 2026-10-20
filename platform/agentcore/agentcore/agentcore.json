@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "communitynavigator",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "communitynavigator",
+    "project": "community-navigator",
+    "environment": "pilot",
+    "managed-by": "agentcore-cli"
+  },
+  "runtimes": [
+    {
+      "name": "community_navigator",
+      "description": "Community Resource Navigator orchestrator with specialist agent-tools (pilot)",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/community_navigator/",
+      "runtimeVersion": "PYTHON_3_12",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP",
+      "authorizerType": "AWS_IAM",
+      "additionalPolicies": [
+        "runtime-policy.json"
+      ],
+      "envVars": [
+        {
+          "name": "DATA_TABLE",
+          "value": "navigator-data-pilot"
+        },
+        {
+          "name": "ENV_NAME",
+          "value": "pilot"
+        },
+        {
+          "name": "ORCHESTRATOR_MODEL_ID",
+          "value": "us.amazon.nova-lite-v1:0"
+        }
+      ],
+      "lifecycleConfiguration": {
+        "idleRuntimeSessionTimeout": 120,
+        "maxLifetime": 900
+      }
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [],
+  "datasets": [],
+  "capacityProviders": [],
+  "payments": []
+}

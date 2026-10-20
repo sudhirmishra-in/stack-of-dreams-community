@@ -1,0 +1,8 @@
+[
+  {
+    "name": "default",
+    "description": "Pilot target (us-east-2: the only region where the account allows DynamoDB, Scheduler and Amplify)",
+    "account": "160102057204",
+    "region": "us-east-2"
+  }
+]
