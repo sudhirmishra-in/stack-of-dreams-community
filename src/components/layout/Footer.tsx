@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { useBranding } from '../../config/branding';
 
 export function Footer() {
@@ -16,6 +17,14 @@ export function Footer() {
             {footer.linkLabel}
           </a>
         </p>
+        <nav aria-label="Legal" className="flex gap-4">
+          <Link to="/privacy" className="hover:text-accent">
+            Privacy Policy
+          </Link>
+          <Link to="/terms" className="hover:text-accent">
+            Terms of Service
+          </Link>
+        </nav>
         {footer.note && <p>{footer.note}</p>}
       </div>
     </footer>

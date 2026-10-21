@@ -18,6 +18,8 @@ import HomePage from '../pages/HomePage';
 import AgentsPage from '../pages/AgentsPage';
 import ArchitecturePage from '../pages/ArchitecturePage';
 import AboutPage from '../pages/AboutPage';
+import PrivacyPage from '../pages/PrivacyPage';
+import TermsPage from '../pages/TermsPage';
 
 const ChatPage = lazy(() => import('../pages/ChatPage'));
 
@@ -73,6 +75,8 @@ export function AppRoutes() {
         <Route path="ai-for-good/projects/:projectId" element={<ProjectDetailPage />} />
         <Route path="architecture" element={<ArchitecturePage />} />
         <Route path="about" element={<AboutPage />} />
+        <Route path="privacy" element={<PrivacyPage />} />
+        <Route path="terms" element={<TermsPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
       <Route path="ai-for-good/projects/:projectId/app" element={<ProjectAppPage />} />
