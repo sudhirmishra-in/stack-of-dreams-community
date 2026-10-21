@@ -55,6 +55,10 @@ class Observed:
             "isDemoData": bool(view.get("isDemoData")),
             "verification": "verified" if view.get("verified") else "unverified",
             "freshness": view.get("freshness", "unknown"),
+            # Kept only so a limit-truncated request can still list what was found; never part of the citation.
+            "name": view.get("name"),
+            "address": view.get("address"),
+            "distanceMiles": view.get("distanceMiles"),
         }
         if view.get("phone"):
             self.phones.add(_digits(view["phone"]))

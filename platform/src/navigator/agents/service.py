@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from navigator.logging_util import log
@@ -15,6 +16,21 @@ from .tools import ToolBox
 
 LIMIT_MESSAGE = "I reached my per-request processing limit, so this answer may be incomplete."
 FAILURE_MESSAGE = "I couldn't finish looking that up. Please try again in a moment."
+# The hooks cancel calls with "Stopped: <reason> reached."; a model sometimes repeats that as its whole reply.
+_BARE_STOP = re.compile(r"^\s*Stopped: [\w -]+ reached\.?\s*$", re.I)
+FALLBACK_LIST_MAX = 5
+
+
+def fallback_answer(observed: Observed) -> str | None:
+    """A plain, tool-grounded list of the providers already retrieved, for when the model produced no usable text."""
+    rows = [r for r in observed.resources.values() if r.get("name")][:FALLBACK_LIST_MAX]
+    if not rows:
+        return None
+    lines = []
+    for i, r in enumerate(rows, 1):
+        detail = ", ".join(x for x in (r.get("address"), f"{r['distanceMiles']} miles away" if r.get("distanceMiles") is not None else None) if x)
+        lines.append(f"{i}. {r['name']}" + (f" ({detail})" if detail else "") + (" [demo data]" if r["isDemoData"] else ""))
+    return "Here is what I found before I ran out of processing time:\n" + "\n".join(lines) + "\nPlease confirm availability with the provider before traveling."
 
 
 def build_prompt(prompt: str, history: list[dict[str, str]], context: dict[str, str]) -> str:
@@ -67,7 +83,10 @@ def answer(payload: dict[str, Any], box_factory: Callable[[UsageMeter, Observed]
         except Exception:
             pass
     # Some models emit their scratch reasoning inline; it is not part of the answer.
-    safe, notes = guard_response(strip_thinking(text) or FAILURE_MESSAGE, observed)
+    text = strip_thinking(text)
+    if not text or _BARE_STOP.match(text):
+        text = fallback_answer(observed) or (LIMIT_MESSAGE if meter.tripped else FAILURE_MESSAGE)
+    safe, notes = guard_response(text, observed)
     citations = [
         {"sourceId": r["sourceId"], "resourceId": rid, "isDemoData": r["isDemoData"], "verification": r["verification"], "freshness": r["freshness"]}
         for rid, r in observed.resources.items()

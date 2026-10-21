@@ -187,3 +187,32 @@ def test_inline_thinking_text_is_removed_from_answers(world):
 def test_response_wrapper_tags_are_removed_but_the_content_is_kept(world):
     out, _ = run(world, [("text", "<response>Here are some food banks.</response>")])
     assert out["response"] == "Here are some food banks."
+
+
+def test_tool_limit_hit_returns_the_providers_already_found_not_a_bare_stop_message(world):
+    # Live repro: "Which food banks are closest to ZIP 11201?" made the model fan out tool calls past the limit,
+    # and the user saw only "Stopped: tool call limit reached."
+    steps = [
+        ("tool", "search_resources", {"zip_code": "10027", "resource_type": "food_assistance"}),
+        ("tool", "search_resources", {"zip_code": "10027", "resource_type": "groceries"}),
+        ("tool", "search_resources", {"zip_code": "10027", "resource_type": "diapers"}),
+        ("text", "Stopped: tool call limit reached."),
+    ]
+    out, _ = run(world, steps, payload={"prompt": "closest food banks to 10027", "limits": {"maxToolIterations": 1}})
+    assert not out["response"].startswith("Stopped:")
+    assert out["citations"], "the first search succeeded, so its providers must be shown"
+    names = [world[0].get(c["resourceId"]).name for c in out["citations"]]
+    assert any(n in out["response"] for n in names)
+    assert "confirm" in out["response"].lower()
+    assert any("processing limit" in u for u in out["uncertainty"])
+
+
+def test_a_bare_stop_message_with_nothing_found_becomes_the_plain_limit_message(world):
+    out, _ = run(world, [("text", "Stopped: model invocation limit reached.")])
+    assert out["response"] == LIMIT_MESSAGE or "try again" in out["response"].lower()
+    assert not out["response"].startswith("Stopped:")
+
+
+def test_answer_wrapper_tags_are_removed_from_the_reply(world):
+    out, _ = run(world, [("text", "<answer>I can only help with community resources.</answer>")])
+    assert out["response"] == "I can only help with community resources."
