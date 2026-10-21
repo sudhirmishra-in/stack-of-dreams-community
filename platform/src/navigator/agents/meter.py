@@ -9,7 +9,7 @@ from typing import Any
 
 # Absolute ceilings. A caller-supplied limit can lower these but never raise them.
 HARD_MAX = {"maxModelInvocations": 12, "maxToolIterations": 10, "maxSpecialistCalls": 4, "maxTokensPerRequest": 20_000, "mainMaxOutputTokens": 600, "timeoutSeconds": 40}
-DEFAULTS = {"maxModelInvocations": 8, "maxToolIterations": 6, "maxSpecialistCalls": 3, "maxTokensPerRequest": 12_000, "mainMaxOutputTokens": 400, "timeoutSeconds": 25}
+DEFAULTS = {"maxModelInvocations": 8, "maxToolIterations": 6, "maxSpecialistCalls": 3, "maxTokensPerRequest": 12_000, "mainMaxOutputTokens": 600, "timeoutSeconds": 25}
 
 
 class LimitExceeded(Exception):

@@ -24,7 +24,7 @@
                                       |
                                       v
                       AgentCore Runtime  community_navigator   (separate from testagent)
-                       Orchestrator (Strands, Nova Lite, 400 out tokens)
+                       Orchestrator (Strands, Nova Lite, 600 out tokens)
                         |- deterministic tools: search / details / inventory / capacity / route
                         '- specialist agent-tools: discovery, inventory, capacity, location (cap 3 / request)
                        LimitsHook: invocations, tool calls, tokens, wall clock  -> cancels calls

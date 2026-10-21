@@ -230,7 +230,7 @@ def test_happy_path_invokes_the_runtime_once_and_settles_actual_usage(ledger):
     assert counters(ledger) == (1, 2800)  # estimate replaced by actual
     assert r.remaining.daily.remaining == 19
     payload, session, user, timeout = inv.calls[0]
-    assert payload["limits"] == {"maxModelInvocations": 8, "maxToolIterations": 6, "maxSpecialistCalls": 3, "maxTokensPerRequest": 12000, "mainMaxOutputTokens": 400, "timeoutSeconds": 25}
+    assert payload["limits"] == {"maxModelInvocations": 8, "maxToolIterations": 6, "maxSpecialistCalls": 3, "maxTokensPerRequest": 12000, "mainMaxOutputTokens": 600, "timeoutSeconds": 25}
     assert len(session) == 64 and session == runtime_session_id(ME.sub, "session-abcdef-1234") and ME.sub not in user
 
 

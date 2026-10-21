@@ -51,7 +51,7 @@ Overridable keys: `requests_per_user_day`, `requests_per_user_month`, `max_query
 Every admin change is logged with the actor's `sub` (no tokens or message text are ever logged).
 
 ## Defaults
-20 requests/user/day, 200/user/month, 500 chars, 4 history messages, 400 output tokens (main), 50 (classifier),
+20 requests/user/day, 200/user/month, 500 chars, 4 history messages, 600 output tokens (main), 50 (classifier),
 3 specialist calls/request, 30,000 estimated tokens/user/day, 1 concurrent request/user, 300 requests/app/day.
 Counters reset at 00:00 UTC (daily) and the 1st (monthly).
 

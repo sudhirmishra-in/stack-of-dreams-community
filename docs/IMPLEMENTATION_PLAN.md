@@ -27,7 +27,7 @@ deployment). This file maps the brief to what exists and lists what is still ope
 | Separate AgentCore runtime + Strands orchestrator + 4 specialists | Done | Agents-as-tools in one runtime; max 3 specialist calls; per-request limits via hooks |
 | Never fabricate inventory | Done | Real OSM records are "unverified, inventory unknown"; inventory exists only in a labelled demo namespace; output guard redacts unsupported contacts/quantities |
 | Cognito invite-only | Done | Admin-create only, MFA off |
-| Quotas (20/day, 200/month, 30k tokens, 400 output, 3 specialists, 1 concurrent, 300/app/day) | Done | Atomic DynamoDB `TransactWriteItems`, enforced before any model or runtime call |
+| Quotas (20/day, 200/month, 30k tokens, 600 output (raised from the 400 in the original brief), 3 specialists, 1 concurrent, 300/app/day) | Done | Atomic DynamoDB `TransactWriteItems`, enforced before any model or runtime call |
 | Token accounting across classifier, orchestrator, specialists | Done | Ledger settles actual tokens; monthly-delta bug fixed and covered by a test |
 | Validation gateway; classifier only when needed | Done | Fails closed; unauthenticated, over-quota and unrelated requests never reach Bedrock |
 | AgentCore native cost controls | Done | Runtime lifecycle (idle 120s, max 900s), reserved Lambda concurrency, Bedrock model/token caps, budget + alarms |

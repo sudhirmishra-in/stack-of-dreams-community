@@ -15,7 +15,7 @@ class QuotaLimits:
     requests_per_user_month: int = 200
     max_query_chars: int = 500
     history_messages: int = 4
-    main_max_output_tokens: int = 400
+    main_max_output_tokens: int = 600
     classifier_max_output_tokens: int = 50
     max_specialist_calls: int = 3
     est_tokens_per_user_day: int = 30_000

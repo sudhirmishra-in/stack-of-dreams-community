@@ -22,6 +22,12 @@ versioned config (`2026-10-19-unverified`) used only for estimated-spend trackin
 | Amplify Hosting | build minutes + GB served | cents-$1 |
 | Budgets | first 2 budgets free | $0 |
 
+## Output-token cap (2026-10-20)
+The main model's per-call output cap was raised from 400 to 600 tokens because longer answers (8-provider lists)
+were being cut off. The per-request ceiling (12,000 tokens, 8 model calls) is unchanged, so the worst-case figures
+above do not move. Typical added cost is at most 200 output tokens x $0.24/1M = about $0.00005 per answer, so
+300 answers/day add under $0.02/day (under $0.50/month) even if every answer used the full extra headroom.
+
 ## Controls
 Quotas -> reserved concurrency (API 10, ingest 1) -> kill switch -> `MonthlyBudgetUsd` budget (default $25) with
 50/80/100%-forecast alerts to the SNS topic -> `TokenSpike` alarm (600k tokens/hour). Check Cost Explorer after
