@@ -1,6 +1,6 @@
 # Project context (for humans and future Claude Code sessions)
 
-**Last verified: 2026-10-20** against the repository (`main`, commit `3bd797d`) and the live AWS account.
+**Last verified: 2026-10-21** against the repository (`main`, commit `f58691d`) and the live AWS account. **Read `docs/OPERATIONS_RUNBOOK.md` for how to deploy, add users and verify.**
 This file records facts. It contains no secrets, account IDs, endpoints or ARNs; look those up as shown in "How to re-verify".
 
 Legend: **[LIVE]** deployed and checked. **[LIVE, UNVERIFIED]** deployed, but not exercised end to end. **[PLANNED]** not built or not deployed.
@@ -11,7 +11,7 @@ Legend: **[LIVE]** deployed and checked. **[LIVE, UNVERIFIED]** deployed, but no
 
 "Stack of Dreams Labs": a React web app presenting AI agents, plus the **Community Resource Navigator** (AI for Good) pilot for the
 AWS Breaking Barriers 2026 hackathon: families find food assistance, baby formula and diapers; coordinators see a read-only
-dashboard; an AI assistant answers grounded in directory data. **Using the AI agents is invite-only** (admin-created Cognito users).
+dashboard; an AI assistant answers grounded in directory data. **Using the AI agents is invite-only**: admin-created Cognito users, or Google accounts whose email is on a sign-up allowlist AND that the owner has approved (section 5).
 
 Repository root = this folder (GitHub: `sudhirmishra-in/stack-of-dreams-community`, public, default branch `main`).
 The sibling folders `../testagent` (own local git, no remote) and `../hackathonNYC26` (empty AgentCore project) are NOT part of this repo.
@@ -29,10 +29,10 @@ platform/               PILOT backend (Python 3.12, uv)
   fixtures/ scripts/ tests/
 amplify.yml             Amplify build + security headers (CSP is Report-Only)
 scripts/verify-dist.mjs fails the build if the MapLibre worker is not emitted
-docs/PROJECT_CONTEXT.md this file
+docs/PROJECT_CONTEXT.md this file (facts)   docs/OPERATIONS_RUNBOOK.md (procedures)   docs/IMPLEMENTATION_PLAN.md (brief vs built)   docs/CI_CD.md
 ```
 
-Tests (rerun 2026-10-20): frontend 116 passing (Vitest), pilot platform 210 passing (pytest), chat backend 15 passing. Lint, typecheck,
+Tests (rerun 2026-10-21): frontend 136 passing (Vitest), pilot platform 255 passing (pytest), chat backend 15 passing. Lint, typecheck,
 production build, `sam validate --lint` and `agentcore validate` pass. A clean checkout of only the tracked files builds and tests green.
 
 ## 2. The existing working integration (React -> Lambda -> AgentCore testagent) [LIVE]
@@ -88,15 +88,16 @@ Safety rules (tested): per-source isolation, expiring lock, idempotent stable id
 Sources: **OpenStreetMap via Overpass** (real, ODbL, community-sourced, **unverified**, 29 NYC food banks), **NYC Open Data CFC `mpqk-skis`** (110 quarterly citywide activity rows; NOT per-provider, NOT capacity), **211 disabled** (no network code), partner CSV adapter implemented, REST/webhook are documented extension points.
 **Inventory exists only as clearly labeled DEMO data** (5 fictional organizations in the `demo` namespace). No verified government pantry directory was found.
 
-**Known issue (found 2026-10-20): the scheduled OSM incremental sync at 06:15 UTC failed** with `HttpError: network error: The read operation timed out`
-(public Overpass slow). State is `failed`, last success 02:08 UTC (the first manual run: 29 created); no data lost; alarm `navigator-pilot-sync-failed` is in ALARM.
-Suspected fix (not applied): raise the Overpass read timeout above its server-side 60 s (client default is 30 s) and keep retries.
+**OSM sync timeout: fixed 2026-10-21.** The incremental sync had failed with `The read operation timed out` because the HTTP client's 30 s read
+timeout was shorter than Overpass's 55-60 s query time. OSM now uses a 75 s read timeout, 3 attempts, 55 s query timeout (worst case stays under the 300 s
+Lambda limit). A manual run succeeded. The alarm `navigator-pilot-sync-failed` (24 h period) may still show ALARM until the next scheduled run (06:15 UTC) and the day boundary pass:
+check it, do not assume it cleared.
 
 ## 5. Authentication, quotas and security [LIVE]
 
-- **Cognito** user pool in us-east-2 (pre-existing): admin-create-only (invite-only), MFA off, 1 user, **no groups yet** (`pilot-admin` not created), app client without secret,
+- **Cognito** user pool in us-east-2 (pre-existing): admin-create-only, MFA off, Managed Login v2 domain, app client `stackofdream-ui` without secret, PKCE, callbacks/sign-out for localhost AND `https://agents.sudhirmishra.in`, scopes `openid email`, identity providers `COGNITO` + `Google`. 3 invited users (2 have not set a password yet), group `pilot-admin` (the owner) and the auto-created `<poolId>_Google` group. The pool requires a `zoneinfo` attribute (the Google mapping fills it from `name`; do not remove). The frontend uses `oidc-client-ts` with tokens in memory only.
   PKCE, callback/sign-out URLs currently **localhost only**. The frontend uses `oidc-client-ts` with tokens in memory only (`VITE_AUTH_MODE=oidc`).
-- **Google sign-in (BUILT, NOT ENABLED)**: code gate + button are in the repo; the Cognito app client still allows only `COGNITO`, and a Google identity provider already exists in the pool. Federated users stay **pending** until approved by `sub` (`platform/scripts/approve_user.py` or `PUT /admin/users/{sub}` `{approved:true}`); they can only call `/me/usage`. Deploy the API gate BEFORE adding Google to the app client. Steps: `platform/docs/google-signin.md`. **Sign-up allowlist (BUILT, NOT DEPLOYED/ATTACHED)**: `navigator-signup-*` Lambda + `scripts/allow_email.py`; blocks uninvited Google emails at account creation once attached to the pool as PreSignUp (manual, approved step).
+- **Google sign-in [LIVE]**: **Continue with Google** is shown (`VITE_AUTH_GOOGLE=true`). Google proves identity only: federated users (claims: username `google_<id>` or group `<poolId>_Google`) stay **pending** until approved by `sub` (`platform/scripts/approve_user.py`, or `PUT /admin/users/{sub}` `{approved:true}`); pending users get HTTP 403 `pending_approval` everywhere except `GET /me/usage`. A **pre sign-up Lambda** (`navigator-signup-pilot`, attached as the pool's PreSignUp trigger) lets only emails on the DynamoDB allowlist create a new Google account (`platform/scripts/allow_email.py`); strangers get `not_invited` and no account. Verified: synthetic invocations of the live Lambda and a real non-invited login. Steps and rollback: `platform/docs/google-signin.md`; procedures: `docs/OPERATIONS_RUNBOOK.md`.
 - **API auth**: every `/api/v1/*` route except `/health` needs a valid Cognito _access_ token (RS256 only, issuer, expiry, `token_use`, `client_id`). Identity = token `sub` only; unknown body fields are rejected.
 - **Validation gateway before the runtime**: kill switch/disabled user -> sanitize + 500-char limit -> idempotent replay -> deterministic domain/injection rules (no LLM) -> **atomic DynamoDB quota reservation** -> Nova Micro classifier only for ambiguous cases -> runtime -> settle actual tokens. Fails closed. The gateway is a cost/relevance filter, not a security boundary (ADR-006).
 - **Default limits** (admin-overridable): 20 req/user/day, 200/month, 500 chars, 4 history messages, 600 main output tokens, 50 classifier tokens, 3 specialist calls, 30k est. tokens/user/day, 1 concurrent, 300 req/app/day; plus per-request 8 model calls / 6 tool calls / 12k tokens / 25 s.
@@ -110,12 +111,12 @@ Suspected fix (not applied): raise the Overpass read timeout above its server-si
 | Item                                                    | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GitHub repo `sudhirmishra-in/stack-of-dreams-community` | [LIVE] initial commit pushed to `main` (1 commit, 245 files, no sensitive files). Repo is **public**                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Amplify app                                             | **[PLANNED] not created** (0 apps in us-east-2). Connecting GitHub needs the owner to authorize Amplify in the console; the keychain token is deliberately not reused                                                                                                                                                                                                                                                                                                                                                                                   |
-| `amplify.yml`                                           | ready: `npm ci`, `npm run build` (includes the worker check), `dist/`, security headers; CSP is **Report-Only**                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| SPA rewrite rule                                        | [PLANNED] must be added in Amplify (regex in `platform/docs/amplify-dns.md`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Amplify app                                             | [LIVE] us-east-2, auto-builds `main` on push (lint + test + build gate); env vars set (public identifiers; `VITE_AUTH_GOOGLE=true`); build failure notifications still OFF                                                                                                                                                                                                                                                                                                                                                                              |
+| `amplify.yml` / `customHttp.yml`                        | [LIVE] `nvm` Node 24 (`.nvmrc`), `npm ci`, lint, test, build; security headers in `customHttp.yml`; CSP is **Report-Only**                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| SPA rewrite rule                                        | [LIVE] regex rule with status 200 (`.mjs` excluded so the MapLibre worker is served); deep links like `/privacy` return 200                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | DNS `agents.sudhirmishra.in`                            | [LIVE] resolves to Amplify's CloudFront and serves the app over valid HTTPS (domain association AVAILABLE, subdomain `agents` only). The old note about adding CNAMEs at GoDaddy no longer applies: DNS is now hosted in Route 53 (see the row below)                                                                                                                                                                                                                                                                                                   |
 | DNS hosting                                             | **Changed 2026-10-20:** the domain's nameservers now point to Route 53 (zone created by Amplify), not GoDaddy. This briefly broke the apex site (GitHub Pages), `www` and Google Workspace e-mail; the missing records (apex A x4, `www` CNAME, MX x5, SPF TXT and its include TXT) were copied into Route 53 and verified from public resolvers. The old GoDaddy zone is untouched. Unknown extra records in that zone (for example DKIM) were not checked: compare it in the GoDaddy console. See the incident note in `platform/docs/amplify-dns.md` |
-| Cognito callback/logout                                 | [PLANNED] must add the production callback and sign-out URLs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Cognito callback/logout                                 | [LIVE] production URLs added next to localhost                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | API CORS                                                | allows the production origin and localhost; the default `*.amplifyapp.com` origin is **not** allowed (test on the custom domain, or add it with a stack update)                                                                                                                                                                                                                                                                                                                                                                                         |
 
 Production env vars for Amplify are listed in `platform/docs/amplify-dns.md` (public identifiers only).
@@ -129,13 +130,15 @@ Blockers and caveats:
 
 1. **No verified food-pantry directory**; OSM is sparse (about half of records lack ZIP/phone/hours) and unverified. Real inventory is not available anywhere.
 2. **`geo:CreateKey` denied** (organization policy): no browser map key; map works only through the API proxy (higher latency/cost, capped).
-3. **OSM sync timeout** (section 4) and its alarm.
-4. **Signed-in end-to-end path not verified by Claude** (no user token): assistant answer through the API, quota behavior, map tiles in a signed-in browser. The user confirmed earlier that chat worked; after the IAM fix and map-pin fix the user was asked to re-check.
-5. Alarm/budget e-mail subscription is **PendingConfirmation** (the owner must click the AWS confirmation e-mail).
-6. Account has credits (month-to-date about $0.00). Fixed cost estimate about $5/month (2 CDK KMS keys, alarms, custom metrics); variable paths are capped (`platform/docs/cost-model.md`). Pricing file is unverified.
+3. **Specialist agents** are tools inside the runtime; in live checks the orchestrator mostly answers with direct tools (only the capacity specialist was seen invoked, once). Discovery/inventory/location specialists are tested offline only.
+4. **Model output**: answers can hit the 600-token output cap on long lists (the service then returns a grounded provider list instead of an error); earlier bugs ("Stopped: tool call limit reached", leaked `<answer>` tags) were fixed and are covered by tests. Re-run `platform/scripts/live_agent_check.py` after any prompt/agent change.
+5. Alarm/budget e-mail subscription is **PendingConfirmation** (the owner must click the AWS confirmation e-mail). The `navigator-pilot-sync-failed` alarm may still be in ALARM (24 h period) until after the next scheduled sync.
+6. Account has credits. Fixed cost estimate about $5/month; variable paths are capped (`platform/docs/cost-model.md`). Pricing file is unverified.
 7. DynamoDB isolation under true concurrency is only unit-tested with moto (which does not isolate transactions); the logic keeps every check inside one transaction.
-8. Search reads the whole real namespace per query (fine at 29 records; needs per-ZIP keys past a few thousand).
-9. GitHub repo is public and contains the AWS account ID and Cognito pool ID in config files (not credentials). Consider making it private.
+8. Search reads the whole real namespace per query (fine at ~29 records; needs per-ZIP keys past a few thousand).
+9. GitHub repo is public and contains the AWS account ID and Cognito pool ID in config files (not credentials). Consider making it private. Branch protection on `main` is not enabled.
+10. Google sign-up creates a separate Cognito user even for an email that already has an invited password account (no linking, deliberately). Admin-created users are never gated; Google users always need approval.
+11. Privacy Policy / Terms (`/privacy`, `/terms`) are drafts written by Claude: the owner should review the wording (and verify that AgentCore trace capture does not store prompt text before relying on the "message text is not logged" statement).
 
 Gotchas learned (do not repeat): MapLibre builds its worker URL at runtime, so it must be set with `setWorkerUrl` (done) or the map hangs in dev and prod;
 Vitest must not read the developer's `.env` (isolated via `envDir`); never put backticks in an unquoted shell heredoc;
@@ -143,14 +146,14 @@ a mocked `Response` body can be read once; Amazon Location `GetGlyphs` wants the
 
 ## 8. Next implementation steps (in order)
 
-1. Create the Amplify app from the GitHub repo in the console (us-east-2, `main`, env vars, SPA rewrite). Then, **with approval**: add the Cognito callback/logout URLs, the CNAMEs at GoDaddy, wait for HTTPS, verify.
-2. Confirm the SNS subscription; create the Cognito group `pilot-admin` (and invite pilot users) with approval.
-3. Run the gated smoke test with a real user token (`platform/tests/smoke_aws.py`, `RUN_AWS_SMOKE=1`), including one real assistant question; verify the signed-in map and quotas.
-4. Fix the Overpass timeout (longer read timeout), redeploy the stack, confirm the sync recovers and the alarm clears.
-5. Exercise a specialist agent against live Bedrock (a multi-provider capacity question) and check token metering.
-6. After the domain works: flip the CSP header from Report-Only to enforcing; optionally move to API Gateway HTTP API in us-east-2 for throttling/WAF (ADR-002).
-7. Real data: pursue a partner CSV/REST feed or 211 authorization; volunteer inventory updates need authentication (not built).
-8. Housekeeping: set retention on `testagent`'s log group if desired; consider deleting the two `CDKToolkit` stacks when deploys are finished (saves about $2/month).
+1. Confirm the SNS e-mail subscription; enable Amplify build-failure notifications and GitHub branch protection on `main` (require the 4 CI checks).
+2. Confirm the scheduled OSM sync (06:15 UTC) succeeds and the sync-failed alarm returns to OK.
+3. Finish the Google flow test with an allowlisted account: sign in => pending => `approve_user.py <sub>` => search and assistant work; then `--revoke`.
+4. Run the gated API smoke test with a real token (`platform/tests/smoke_aws.py`); verify the signed-in map and quotas in a browser.
+5. Exercise the discovery/inventory/location specialists on prompts that need them; consider a `dev` stack (`EnvName` parameter) before further risky changes.
+6. Flip the CSP header from Report-Only to enforcing once the console shows no violations; optionally move to API Gateway HTTP API in us-east-2 for throttling/WAF (ADR-002).
+7. Real data: pursue a partner CSV/REST feed or 211 authorization (adapters exist, disabled); volunteer inventory updates need authentication (not built).
+8. Housekeeping: delete the two stray pending Google test accounts if they still exist; compare the old GoDaddy DNS zone for extra records (DKIM) and delete the empty duplicate hosted zone for `agents.sudhirmishra.in`; decide whether to keep DNS in Route 53; set retention on `testagent`'s log group.
 
 ## How to re-verify
 
