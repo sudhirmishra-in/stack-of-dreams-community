@@ -30,7 +30,7 @@ def fallback_answer(observed: Observed) -> str | None:
     for i, r in enumerate(rows, 1):
         detail = ", ".join(x for x in (r.get("address"), f"{r['distanceMiles']} miles away" if r.get("distanceMiles") is not None else None) if x)
         lines.append(f"{i}. {r['name']}" + (f" ({detail})" if detail else "") + (" [demo data]" if r["isDemoData"] else ""))
-    return "Here is what I found before I ran out of processing time:\n" + "\n".join(lines) + "\nPlease confirm availability with the provider before traveling."
+    return "Here is what I found (the full answer could not be completed):\n" + "\n".join(lines) + "\nPlease confirm availability with the provider before traveling."
 
 
 def build_prompt(prompt: str, history: list[dict[str, str]], context: dict[str, str]) -> str:
@@ -84,7 +84,7 @@ def answer(payload: dict[str, Any], box_factory: Callable[[UsageMeter, Observed]
             pass
     # Some models emit their scratch reasoning inline; it is not part of the answer.
     text = strip_thinking(text)
-    if not text or _BARE_STOP.match(text):
+    if not text or text == FAILURE_MESSAGE or _BARE_STOP.match(text):
         text = fallback_answer(observed) or (LIMIT_MESSAGE if meter.tripped else FAILURE_MESSAGE)
     safe, notes = guard_response(text, observed)
     citations = [

@@ -45,11 +45,11 @@ class ScriptedModel(Model):
         self.calls += 1
         step = self.steps.pop(0) if self.steps else ("text", "Done.")
         yield {"messageStart": {"role": "assistant"}}
-        if step[0] == "text":
+        if step[0] in ("text", "cut"):  # "cut": the reply hit the output-token cap mid-sentence
             yield {"contentBlockStart": {"start": {}}}
             yield {"contentBlockDelta": {"delta": {"text": step[1]}}}
             yield {"contentBlockStop": {}}
-            stop = "end_turn"
+            stop = "end_turn" if step[0] == "text" else "max_tokens"
         else:
             yield {"contentBlockStart": {"start": {"toolUse": {"toolUseId": f"t{self.calls}", "name": step[1]}}}}
             yield {"contentBlockDelta": {"delta": {"toolUse": {"input": json.dumps(step[2])}}}}
@@ -216,3 +216,14 @@ def test_a_bare_stop_message_with_nothing_found_becomes_the_plain_limit_message(
 def test_answer_wrapper_tags_are_removed_from_the_reply(world):
     out, _ = run(world, [("text", "<answer>I can only help with community resources.</answer>")])
     assert out["response"] == "I can only help with community resources."
+
+
+def test_reply_cut_off_by_the_output_cap_still_returns_the_providers_found(world):
+    # Live repro: "Find food pantries near ZIP 10027" failed about half the time with MaxTokensReachedException
+    # ("I couldn't finish looking that up") because an 8-item list exceeded the 400-token output cap.
+    steps = [("tool", "search_resources", {"zip_code": "10027", "resource_type": "food_assistance"}), ("cut", "Here are some food pantries near ZIP 10027:\n1. ")]
+    out, _ = run(world, steps, payload={"prompt": "food pantries near 10027"})
+    assert out["response"] != FAILURE_MESSAGE
+    assert out["citations"] and "confirm" in out["response"].lower()
+    names = [world[0].get(c["resourceId"]).name for c in out["citations"]]
+    assert any(n in out["response"] for n in names)
