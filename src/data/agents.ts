@@ -11,6 +11,22 @@ export const AGENTS: Agent[] = [
     capabilities: ['Conversational Q&A', 'Markdown & code answers', 'Session-aware follow-ups'],
   },
   {
+    id: 'ai-for-good',
+    name: 'AI for Good Assistant',
+    description:
+      'Helps families find food assistance near them, grounded in real NYC directory data. Every answer lists its sources and says when something is unknown.',
+    status: 'demo',
+    statusLabel: 'Pilot (invite-only)',
+    interactive: true,
+    capabilities: [
+      'Find food pantries and food banks by ZIP code',
+      'Nearest providers, with distances',
+      'Says "unknown" instead of guessing inventory',
+    ],
+    route: '/ai-for-good/assistant',
+    actionLabel: 'Open the AI for Good assistant',
+  },
+  {
     id: 'research',
     name: 'Research Agent',
     description: 'Specialized agent for technical research and analysis.',

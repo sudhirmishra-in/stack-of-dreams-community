@@ -13,6 +13,8 @@ export default function ChatPage({ context }: { context?: ChatContext }) {
   const { agentId = defaultAgentId } = useParams();
   const agent = agents.find((a) => a.id === agentId);
   if (!agent || !agent.interactive) return <Navigate to="/agents" replace />;
+  // An agent with its own page (AI for Good) must never be served by the general chat window and service.
+  if (agent.route && !context) return <Navigate to={agent.route} replace />;
   return <ChatView key={agent.id} agentId={agent.id} context={context} />;
 }
 

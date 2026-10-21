@@ -2,11 +2,13 @@ import { getCategory } from '../../../config/resourceCategories';
 import type { Resource, ResourceSearchRequest, ResourceType } from '../types/resource';
 import { formatNumber, NOT_AVAILABLE } from './format';
 
+// Each of these was run against the live runtime and got a grounded answer. Real providers have no inventory or
+// capacity data, so prompts must not ask for it as fact (the third one deliberately gets "unknown").
 export const AI_FOR_GOOD_STARTER_PROMPTS = [
-  'Which food banks near 10027 have baby formula?',
-  'Which organization has the highest weekly capacity?',
-  'Compare the available baby formula inventory.',
-  'Which resources should I contact first?',
+  'Find food pantries near ZIP 10027 in Manhattan.',
+  'Which food banks are closest to ZIP 11201 in Brooklyn?',
+  'Does the Community Kitchen and Pantry on West 116th Street have food today?',
+  'How much food assistance activity has NYC reported recently?',
 ];
 
 const GUARDRAIL =

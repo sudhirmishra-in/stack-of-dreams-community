@@ -35,7 +35,9 @@ export function AgentCard({ agent }: { agent: Agent }) {
         </ul>
       </div>
       {agent.interactive ? (
-        <LinkButton to={`/chat/${agent.id}`}>Try the demo</LinkButton>
+        <LinkButton to={agent.route ?? `/chat/${agent.id}`}>
+          {agent.actionLabel ?? 'Try the demo'}
+        </LinkButton>
       ) : (
         <button
           type="button"

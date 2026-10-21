@@ -15,6 +15,7 @@ vi.mock('../services/resourceService', async () => {
 });
 
 import { AppRoutes } from '../app/router';
+import { AI_FOR_GOOD_STARTER_PROMPTS } from '../features/aiForGood/utils/prompts';
 
 const renderAt = (path: string) =>
   render(
@@ -173,9 +174,9 @@ describe('details and assistant handoff', () => {
   it('assistant route keeps the standard chat working with AI for Good prompts', async () => {
     const user = userEvent.setup();
     renderAt('/ai-for-good/assistant');
-    expect(
-      screen.getByRole('button', { name: 'Which organization has the highest weekly capacity?' }),
-    ).toBeInTheDocument();
+    for (const prompt of AI_FOR_GOOD_STARTER_PROMPTS) {
+      expect(screen.getByRole('button', { name: prompt })).toBeInTheDocument();
+    }
     expect(
       screen.getByText(/AI-generated suggestions, not verified inventory/),
     ).toBeInTheDocument();
