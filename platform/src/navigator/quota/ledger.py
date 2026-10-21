@@ -83,6 +83,7 @@ class Effective:
     limits: QuotaLimits
     disabled: bool
     assistant_enabled: bool
+    approved: bool = False  # only meaningful for federated (e.g. Google) users; admin-created users never need it
 
 
 class UsageLedger:
@@ -121,7 +122,7 @@ class UsageLedger:
         switch = by_sk.get(("CONFIG", "SWITCH"), {})
         profile = by_sk.get((f"USER#{sub}", "PROFILE"), {})
         limits = QuotaLimits.with_overrides({**quotas, **profile.get("overrides", {})})
-        return Effective(limits, bool(profile.get("disabled", False)), bool(switch.get("assistantEnabled", True)))
+        return Effective(limits, bool(profile.get("disabled", False)), bool(switch.get("assistantEnabled", True)), bool(profile.get("approved", False)))
 
     # ---------- reserve ----------
 
@@ -380,16 +381,17 @@ class UsageLedger:
     def set_switch(self, assistant_enabled: bool, actor: str) -> None:
         self.table.put_item(Item=to_ddb({**self._k("CONFIG", "SWITCH"), "assistantEnabled": assistant_enabled, "updatedBy": actor, "updatedAt": int(self._clock())}))
 
-    def set_user_profile(self, sub: str, *, disabled: bool | None, overrides: dict[str, int] | None, actor: str) -> dict[str, Any]:
+    def set_user_profile(self, sub: str, *, disabled: bool | None, overrides: dict[str, int] | None, actor: str, approved: bool | None = None) -> dict[str, Any]:
         cur = from_ddb(self.table.get_item(Key=self._k(f"USER#{sub}", "PROFILE")).get("Item") or {})
         new_overrides = cur.get("overrides", {}) if overrides is None else {
             k: int(v) for k, v in overrides.items()
             if k in QuotaLimits.__dataclass_fields__ and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0
         }
         profile = {**self._k(f"USER#{sub}", "PROFILE"), "disabled": cur.get("disabled", False) if disabled is None else disabled,
+                   "approved": cur.get("approved", False) if approved is None else approved,
                    "overrides": new_overrides, "updatedBy": actor, "updatedAt": int(self._clock())}
         self.table.put_item(Item=to_ddb(profile))
-        return {"disabled": profile["disabled"], "overrides": new_overrides}
+        return {"disabled": profile["disabled"], "approved": profile["approved"], "overrides": new_overrides}
 
 
 class _SlotBusy(Exception):

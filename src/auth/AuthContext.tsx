@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { authService as defaultService } from '../services/authService';
-import type { AuthService, AuthUser } from '../types/auth';
+import type { AuthProvider, AuthService, AuthUser } from '../types/auth';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -18,7 +18,9 @@ export interface AuthState {
   status: AuthStatus;
   user: AuthUser | null;
   error: string | null;
-  signIn: (returnTo?: string) => Promise<void>;
+  /** Extra sign-in buttons to show (e.g. Google). Empty for invite-only sign-in. */
+  providers: readonly AuthProvider[];
+  signIn: (returnTo?: string, provider?: AuthProvider) => Promise<void>;
   signOut: () => Promise<void>;
   /** Called by the callback route after a redirect-based sign-in. */
   completeSignIn: () => Promise<string>;
@@ -29,6 +31,7 @@ const disabled: AuthState = {
   status: 'unauthenticated',
   user: null,
   error: null,
+  providers: [],
   signIn: async () => {},
   signOut: async () => {},
   completeSignIn: async () => '/',
@@ -68,10 +71,10 @@ export function AuthProvider({
   }, [enabled, service]);
 
   const signIn = useCallback(
-    async (returnTo?: string) => {
+    async (returnTo?: string, provider?: AuthProvider) => {
       setError(null);
       try {
-        const u = await service.signIn(returnTo);
+        const u = await service.signIn(returnTo, provider);
         if (u) {
           setUser(u);
           setStatus('authenticated');
@@ -97,8 +100,17 @@ export function AuthProvider({
   }, [service]);
 
   const value = useMemo<AuthState>(
-    () => ({ enabled, status, user, error, signIn, signOut, completeSignIn }),
-    [enabled, status, user, error, signIn, signOut, completeSignIn],
+    () => ({
+      enabled,
+      status,
+      user,
+      error,
+      providers: service.providers ?? [],
+      signIn,
+      signOut,
+      completeSignIn,
+    }),
+    [enabled, status, user, error, service, signIn, signOut, completeSignIn],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

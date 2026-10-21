@@ -195,6 +195,8 @@ class UsageResponse(BaseModel):
     concurrentLimit: int
     applicationDaily: UsageLimitView | None = None
     disabled: bool = False
+    # "pending" = signed in with an external provider (Google) but not yet approved by an administrator.
+    accountStatus: Literal["approved", "pending", "disabled"] = "approved"
     correlationId: str
 
 

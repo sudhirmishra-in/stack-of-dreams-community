@@ -34,6 +34,12 @@ class Forbidden(ApiError):
     status, code = 403, "forbidden"
 
 
+class PendingApproval(ApiError):
+    """A verified identity that an administrator has not approved for the pilot yet (e.g. a new Google sign-in)."""
+
+    status, code = 403, "pending_approval"
+
+
 class NotFound(ApiError):
     status, code = 404, "not_found"
 

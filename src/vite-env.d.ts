@@ -15,6 +15,8 @@ interface ImportMetaEnv {
   readonly VITE_AUTH_REDIRECT_URI?: string;
   readonly VITE_AUTH_SCOPE?: string;
   readonly VITE_AUTH_LOGOUT_DOMAIN?: string;
+  /** "true" shows the Continue with Google button (the Cognito app client must also allow Google). */
+  readonly VITE_AUTH_GOOGLE?: string;
 }
 
 interface ImportMetaEnv {

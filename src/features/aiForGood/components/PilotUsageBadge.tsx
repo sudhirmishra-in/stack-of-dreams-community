@@ -25,6 +25,17 @@ export function PilotUsageBadge() {
   }, []);
 
   if (!usage) return null;
+  if (usage.accountStatus === 'pending') {
+    return (
+      <p
+        role="status"
+        className="rounded-lg border border-amber-500/40 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300"
+      >
+        Your account is waiting for approval. You can use the pilot once an administrator approves
+        it.
+      </p>
+    );
+  }
   const low = usage.daily.remaining <= 3;
   return (
     <p

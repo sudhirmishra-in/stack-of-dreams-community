@@ -1,5 +1,5 @@
 import { InMemoryWebStorage, UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
-import type { AuthService, AuthUser } from '../types/auth';
+import type { AuthProvider, AuthService, AuthUser } from '../types/auth';
 import { safeReturnTo } from './returnTo';
 
 const env = import.meta.env;
@@ -50,14 +50,23 @@ function createOidcAuthService(): AuthService {
     return manager;
   };
 
+  const providers: readonly AuthProvider[] = env.VITE_AUTH_GOOGLE === 'true' ? ['google'] : [];
+
   return {
     mode: 'oidc',
+    providers,
     async init() {
       const u = await getManager().getUser();
       return u && !u.expired ? toAuthUser(u) : null;
     },
-    async signIn(returnTo = '/') {
-      await getManager().signinRedirect({ state: safeReturnTo(returnTo) });
+    async signIn(returnTo = '/', provider) {
+      // Cognito skips its own sign-in page and goes straight to Google when told which provider to use.
+      // Only providers this build advertises are honoured; anything else falls back to the normal sign-in page.
+      const extraQueryParams =
+        provider === 'google' && providers.includes('google')
+          ? { identity_provider: 'Google' }
+          : undefined;
+      await getManager().signinRedirect({ state: safeReturnTo(returnTo), extraQueryParams });
     },
     completeSignIn() {
       // The auth code is single-use; share one in-flight call (React StrictMode runs effects twice).

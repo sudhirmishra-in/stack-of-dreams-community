@@ -19,6 +19,8 @@ export interface PilotUsage {
   tokensToday: UsageLimit;
   maxQueryChars: number;
   disabled?: boolean;
+  /** "pending" = signed in with Google but not yet approved by an administrator. */
+  accountStatus?: 'approved' | 'pending' | 'disabled';
 }
 
 export const pilotBase = () =>

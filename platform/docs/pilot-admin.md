@@ -50,6 +50,11 @@ Overridable keys: `requests_per_user_day`, `requests_per_user_month`, `max_query
 `routes_per_user_day`, `searches_per_user_day`. Unknown keys and negative values are ignored.
 Every admin change is logged with the actor's `sub` (no tokens or message text are ever logged).
 
+## Google sign-in users (pending until approved)
+Users who sign in with Google start as **pending** and cannot use paid features until approved by `sub`. See
+`google-signin.md`; approve with `platform/scripts/approve_user.py <sub>` or `PUT /api/v1/admin/users/{sub}`
+`{"approved": true}`. Invited (admin-created) users need no approval.
+
 ## Defaults
 20 requests/user/day, 200/user/month, 500 chars, 4 history messages, 600 output tokens (main), 50 (classifier),
 3 specialist calls/request, 30,000 estimated tokens/user/day, 1 concurrent request/user, 300 requests/app/day.

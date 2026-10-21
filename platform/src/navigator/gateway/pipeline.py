@@ -18,7 +18,7 @@ import uuid
 from typing import Any
 
 from navigator.config import QuotaLimits, Settings
-from navigator.errors import Forbidden, OutOfScope, ServiceUnavailable
+from navigator.errors import Forbidden, OutOfScope, PendingApproval, ServiceUnavailable
 from navigator.logging_util import log
 from navigator.ingest import metrics
 from navigator.models import AgentUsage, AssistantRequest, AssistantResponse, UsageLimitView, UsageResponse
@@ -35,7 +35,7 @@ def usage_view(limit: int, used: int, resets_at: str) -> UsageLimitView:
     return UsageLimitView(limit=limit, used=used, remaining=max(0, limit - used), resetsAt=resets_at)
 
 
-def build_usage(ledger: UsageLedger, sub: str, correlation_id: str, eff=None) -> UsageResponse:
+def build_usage(ledger: UsageLedger, sub: str, correlation_id: str, eff=None, federated: bool = False) -> UsageResponse:
     eff = eff or ledger.effective(sub)
     snap = ledger.snapshot(sub, eff.limits)
     lim = eff.limits
@@ -47,6 +47,7 @@ def build_usage(ledger: UsageLedger, sub: str, correlation_id: str, eff=None) ->
         concurrentLimit=lim.max_concurrent_per_user,
         applicationDaily=usage_view(lim.requests_per_app_day, snap.app_daily_requests, next_day_reset(snap.now)),
         disabled=eff.disabled,
+        accountStatus="disabled" if eff.disabled else ("pending" if federated and not eff.approved else "approved"),
         correlationId=correlation_id,
     )
 
@@ -58,6 +59,8 @@ class AssistantPipeline:
     def handle(self, identity: Identity, req: AssistantRequest, correlation_id: str) -> AssistantResponse:
         sub = identity.sub
         eff = self.ledger.effective(sub)  # 503 if the ledger is unreachable: fail closed
+        if identity.federated and not eff.approved:  # defense in depth: the API layer already refuses these
+            raise PendingApproval("Your account is waiting for approval.")
         if not self.settings.assistant_enabled or not eff.assistant_enabled:
             raise ServiceUnavailable("The assistant is temporarily paused.", headers={"Retry-After": "300"})
         if eff.disabled:

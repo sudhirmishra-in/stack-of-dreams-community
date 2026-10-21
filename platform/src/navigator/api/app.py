@@ -24,7 +24,7 @@ from pydantic import BaseModel, ValidationError
 
 from navigator.config import QuotaLimits, Settings
 from navigator.ingest import metrics
-from navigator.errors import ApiError, BadRequest, Forbidden, NotFound, ServiceUnavailable, Unauthorized
+from navigator.errors import ApiError, BadRequest, Forbidden, NotFound, PendingApproval, ServiceUnavailable, Unauthorized
 from navigator.gateway.auth import Identity, JwtVerifier
 from navigator.gateway.pipeline import AssistantPipeline, build_usage
 from navigator.location.client import LocationClient, LocationUnavailable
@@ -66,6 +66,7 @@ class Request:
     correlation_id: str
     identity: Identity | None = None
     domain: str | None = None
+    eff: Any = None  # effective limits/approval, loaded once per request for federated users
 
 
 def _binary(asset: MapAsset, cid: str) -> dict[str, Any]:
@@ -112,7 +113,7 @@ class App:
             ("GET", re.compile(r"^/api/v1/resources/(?P<id>[^/]+)$"), self.get_resource, "user"),
             ("GET", re.compile(r"^/api/v1/route$"), self.route, "user"),
             ("POST", re.compile(r"^/api/v1/assistant$"), self.assistant, "user"),
-            ("GET", re.compile(r"^/api/v1/me/usage$"), self.me_usage, "user"),
+            ("GET", re.compile(r"^/api/v1/me/usage$"), self.me_usage, "pending_ok"),
             ("GET", re.compile(r"^/api/v1/maps/style$"), self.map_style, "user"),
             ("GET", re.compile(r"^/api/v1/maps/tiles/(?P<tileset>[^/]+)/(?P<z>[^/]+)/(?P<x>[^/]+)/(?P<y>[^/]+)$"), self.map_tile, "user"),
             ("GET", re.compile(r"^/api/v1/maps/glyphs/(?P<fontstack>[^/]+)/(?P<rng>[^/]+)\.pbf$"), self.map_glyphs, "user"),
@@ -164,6 +165,12 @@ class App:
             fn, auth, params = matched
             if auth != "none":
                 req.identity = self.d.verifier.verify(headers.get("authorization"))
+                if req.identity.federated:
+                    # Signing in with Google proves identity only. Nothing that costs money or returns pilot data
+                    # runs until an administrator approves this Cognito sub (except reading one's own status).
+                    req.eff = self.d.ledger.effective(req.identity.sub)
+                    if not req.eff.approved and auth != "pending_ok":
+                        raise PendingApproval("Your account is waiting for approval. You will be able to use the pilot once an administrator approves it.")
                 if auth == "admin":
                     self.d.verifier.require_admin(req.identity, self.d.settings.admin_group)
             status, payload = fn(req, **params)
@@ -184,8 +191,11 @@ class App:
     def health(self, req: Request):
         return 200, {"status": "ok", "version": VERSION, "mockMode": self.d.settings.mock_mode, "correlationId": req.correlation_id}
 
+    def _eff(self, req: Request):
+        return req.eff or self.d.ledger.effective(req.identity.sub)  # type: ignore[union-attr]
+
     def _limits(self, req: Request) -> QuotaLimits:
-        return self.d.ledger.effective(req.identity.sub).limits  # type: ignore[union-attr]
+        return self._eff(req).limits
 
     def _geocode_gate(self, sub: str, limits: QuotaLimits):
         """Called only on a cache miss, right before a paid geocode: spends one unit of the user's and the pilot's budget."""
@@ -197,7 +207,7 @@ class App:
         return allow
 
     def search(self, req: Request):
-        eff = self.d.ledger.effective(req.identity.sub)  # type: ignore[union-attr]
+        eff = self._eff(req)
         if eff.disabled:
             raise Forbidden("Pilot access is disabled for this account.")
         self.d.ledger.count_event(req.identity.sub, "search", eff.limits.searches_per_user_day)  # type: ignore[union-attr]
@@ -211,7 +221,7 @@ class App:
         return 200, {"resource": view.model_dump(mode="json"), "correlationId": req.correlation_id}
 
     def route(self, req: Request):
-        eff = self.d.ledger.effective(req.identity.sub)  # type: ignore[union-attr]
+        eff = self._eff(req)
         if eff.disabled:
             raise Forbidden("Pilot access is disabled for this account.")
         zip_code, rid = req.query.get("fromZip", ""), req.query.get("toResourceId", "")
@@ -244,12 +254,12 @@ class App:
         return 200, self.d.pipeline.handle(req.identity, ar, req.correlation_id)  # type: ignore[arg-type]
 
     def me_usage(self, req: Request):
-        return 200, build_usage(self.d.ledger, req.identity.sub, req.correlation_id)  # type: ignore[union-attr]
+        return 200, build_usage(self.d.ledger, req.identity.sub, req.correlation_id, self._eff(req), req.identity.federated)  # type: ignore[union-attr]
 
     # ---------- map proxy (no browser-side AWS key; see location/maps.py) ----------
 
     def _maps(self, req: Request) -> MapsClient:
-        eff = self.d.ledger.effective(req.identity.sub)  # type: ignore[union-attr]
+        eff = self._eff(req)
         if eff.disabled:
             raise Forbidden("Pilot access is disabled for this account.")
         self.d.ledger.count_event(req.identity.sub, "map", eff.limits.map_requests_per_user_day)  # type: ignore[union-attr]
@@ -300,15 +310,17 @@ class App:
         if not _SUB.match(sub):
             raise BadRequest("Invalid user id")
         body = req.body if isinstance(req.body, dict) else {}
-        disabled, overrides = body.get("disabled"), body.get("overrides")
+        disabled, overrides, approved = body.get("disabled"), body.get("overrides"), body.get("approved")
         if disabled is not None and not isinstance(disabled, bool):
             raise BadRequest("'disabled' must be true or false")
+        if approved is not None and not isinstance(approved, bool):
+            raise BadRequest("'approved' must be true or false")
         if overrides is not None and not isinstance(overrides, dict):
             raise BadRequest("'overrides' must be an object")
-        if disabled is None and overrides is None:
-            raise BadRequest("Provide 'disabled' and/or 'overrides'")
-        profile = self.d.ledger.set_user_profile(sub, disabled=disabled, overrides=overrides, actor=req.identity.sub)  # type: ignore[union-attr]
-        log("admin_user_changed", correlationId=req.correlation_id, target=sub, disabled=profile["disabled"])
+        if disabled is None and overrides is None and approved is None:
+            raise BadRequest("Provide 'approved', 'disabled' and/or 'overrides'")
+        profile = self.d.ledger.set_user_profile(sub, disabled=disabled, overrides=overrides, actor=req.identity.sub, approved=approved)  # type: ignore[union-attr]
+        log("admin_user_changed", correlationId=req.correlation_id, target=sub, disabled=profile["disabled"], approved=profile["approved"])
         return 200, {**profile, "correlationId": req.correlation_id}
 
     def admin_usage(self, req: Request):

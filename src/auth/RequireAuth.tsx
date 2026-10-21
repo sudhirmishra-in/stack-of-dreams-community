@@ -3,11 +3,12 @@ import { useLocation } from 'react-router';
 import { Lock } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { Button } from '../components/ui/Button';
+import { GoogleIcon } from '../components/ui/GoogleIcon';
 import { useBranding } from '../config/branding';
 
 /** Renders children when auth is disabled or the user is signed in; otherwise a sign-in prompt. */
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { enabled, status, error, signIn } = useAuth();
+  const { enabled, status, error, providers, signIn } = useAuth();
   const { pathname, search } = useLocation();
   const { name } = useBranding();
 
@@ -33,15 +34,23 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       <p className="mt-2 text-xs text-muted">
         Access is by invitation only. If you were invited, sign in with your invited account; if
         not, contact the project owner to request access.
+        {providers.includes('google') &&
+          ' Signing in with Google confirms who you are but does not grant access by itself: new accounts wait for approval.'}
       </p>
       {error && (
         <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-300">
           {error}
         </p>
       )}
-      <Button className="mt-6" onClick={() => signIn(pathname + search)}>
-        Sign in
-      </Button>
+      <div className="mt-6 flex flex-col items-center gap-3">
+        <Button onClick={() => signIn(pathname + search)}>Sign in</Button>
+        {providers.includes('google') && (
+          <Button variant="secondary" onClick={() => signIn(pathname + search, 'google')}>
+            <GoogleIcon />
+            Continue with Google
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
