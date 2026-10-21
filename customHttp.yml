@@ -1,0 +1,21 @@
+# Security headers served by AWS Amplify Hosting (it reads this file from the repository root).
+# The Content-Security-Policy is REPORT-ONLY on purpose: a missed origin must not break sign-in or the map.
+# After exercising sign-in, search, the map and the assistant with no violations in the browser console,
+# rename "Content-Security-Policy-Report-Only" to "Content-Security-Policy" to enforce it.
+# The script hash must match the inline theme script in index.html; recompute it if that script ever changes
+# (see platform/docs/amplify-dns.md).
+customHeaders:
+  - pattern: '**'
+    headers:
+      - key: Strict-Transport-Security
+        value: 'max-age=31536000; includeSubDomains'
+      - key: X-Content-Type-Options
+        value: 'nosniff'
+      - key: X-Frame-Options
+        value: 'DENY'
+      - key: Referrer-Policy
+        value: 'strict-origin-when-cross-origin'
+      - key: Permissions-Policy
+        value: 'camera=(), microphone=(), geolocation=()'
+      - key: Content-Security-Policy-Report-Only
+        value: "default-src 'self'; script-src 'self' 'sha256-X+XOwlK6WyQjQzOfjOPjZEhPkafPLcIIfAOGV5ID3xw='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.lambda-url.us-east-1.on.aws https://*.lambda-url.us-east-2.on.aws https://cognito-idp.us-east-2.amazonaws.com https://*.auth.us-east-2.amazoncognito.com; worker-src 'self' blob:; child-src blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"

@@ -13,7 +13,7 @@ Create e.g. `sudhirmishra/stack-of-dreams-labs`, push this folder (the repo root
 
 ## Console steps (recommended; the console handles the GitHub app authorization)
 1. Region **US East (Ohio) us-east-2** -> AWS Amplify -> *Create new app* -> GitHub -> select repo + `main`.
-2. Build settings: it detects `amplify.yml` (npm ci, npm run build, `dist`). It also applies the security headers.
+2. Build settings: it detects `amplify.yml` (pins Node from `.nvmrc`, runs `npm ci`, lint, tests, then `npm run build`, publishes `dist`). Security headers come from `customHttp.yml` in the repo root (Amplify does not read headers from `amplify.yml`).
 3. Environment variables (Hosting -> Environment variables), public identifiers only:
    `VITE_AUTH_MODE=oidc`, `VITE_AUTH_AUTHORITY=https://cognito-idp.us-east-2.amazonaws.com/us-east-2_tPaKrhmEX`,
    `VITE_AUTH_CLIENT_ID`, `VITE_AUTH_REDIRECT_URI=https://agents.sudhirmishra.in/auth/callback`,
@@ -44,5 +44,5 @@ curl -s -o /dev/null -w '%{http_code}\n' https://agents.sudhirmishra.in/ai-for-g
 Then in a browser: HTTPS lock; sign-in redirects to Cognito and back; `/ai-for-good/results?...` deep link works;
 results load (Network tab: calls to the Function URL succeed, no CORS errors: the origin must be in `AllowedOrigins`);
 the map renders. The Content-Security-Policy header ships as **Report-Only**: open the console, exercise sign-in,
-search, the map and the assistant, and if there are no violations rename the header key in `amplify.yml` to
+search, the map and the assistant, and if there are no violations rename the header key in `customHttp.yml` to
 `Content-Security-Policy` to enforce it.

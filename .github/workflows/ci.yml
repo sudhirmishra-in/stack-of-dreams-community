@@ -1,0 +1,101 @@
+name: CI
+
+# Runs on every pull request to main and on every push to main. It needs NO secrets and NO AWS credentials:
+# everything below uses fakes/mocks. Deployments are NOT done here (Amplify deploys the frontend on push to main;
+# the AWS backend is deployed manually after a change-set preview).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (lint, test, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      # Type-checks, builds, and fails if the MapLibre worker is missing from dist/.
+      - run: npm run build
+
+  platform:
+    name: Pilot platform (pytest, SAM template lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: platform
+    env:
+      AWS_DEFAULT_REGION: us-east-2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: '3.12'
+      - name: Install (fails if uv.lock is out of date)
+        run: uv sync --locked --group dev --group agent
+      - name: Unit and integration tests (moto and fixtures, no AWS)
+        run: uv run pytest -q
+      - name: Lint the SAM/CloudFormation template
+        run: uvx --from 'aws-sam-cli==1.155.2' sam validate --lint -t infra/template.yaml --region us-east-2
+
+  chat-backend:
+    name: Chat backend (typecheck, test, bundle)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  hygiene:
+    name: Repository hygiene (no secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: No environment files or credentials are committed
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '\.env\.example$'; then
+            echo "::error::An environment file is tracked. Only .env.example files may be committed."
+            exit 1
+          fi
+          if git grep -InE 'AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{30,}' -- . ':!package-lock.json'; then
+            echo "::error::A possible credential is committed. Remove it and rotate it."
+            exit 1
+          fi
+          echo "ok: no tracked env files, no credential patterns"
