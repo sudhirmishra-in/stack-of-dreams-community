@@ -52,6 +52,40 @@ sign-out `https://agents.sudhirmishra.in`, flow `code`, scopes `openid email`.
 **Order matters:** deploy the API stack with the approval gate *before* step (c). Once (c) is done, any Google account
 can sign in; the gate is what keeps them off paid features.
 
+## 2b. Block uninvited Google accounts at sign-up (pre sign-up allowlist)
+Without this, any Google account can create a (pending, powerless) Cognito user. With it, only invited emails can.
+1. Deploy the `navigator-pilot` stack (creates the `SignupFunction` Lambda and lets this pool invoke it; the stack does
+   not modify the user pool). Read `SignupFunctionArn` from the stack outputs.
+2. Seed the allowlist with your AWS credentials (emails are stored lowercase in one DynamoDB item; no secrets):
+```bash
+cd platform && uv run python scripts/allow_email.py add alice@example.com bob@example.com
+uv run python scripts/allow_email.py list
+```
+3. **Attach the trigger (production authentication change: get approval).** `update-user-pool` resets every setting you
+   do not pass, so read the pool first (`describe-user-pool`) and re-send everything. Only `--lambda-config` is new:
+```bash
+aws cognito-idp update-user-pool --region <REGION> --user-pool-id <POOL_ID> \
+  --lambda-config PreSignUp=<SignupFunctionArn> \
+  --policies 'PasswordPolicy={MinimumLength=8,RequireUppercase=true,RequireLowercase=true,RequireNumbers=true,RequireSymbols=true,TemporaryPasswordValidityDays=7},SignInPolicy={AllowedFirstAuthFactors=[PASSWORD]}' \
+  --deletion-protection ACTIVE --auto-verified-attributes email --mfa-configuration OFF \
+  --email-configuration EmailSendingAccount=COGNITO_DEFAULT \
+  --admin-create-user-config AllowAdminCreateUserOnly=true,UnusedAccountValidityDays=7 \
+  --verification-message-template DefaultEmailOption=CONFIRM_WITH_CODE \
+  --account-recovery-setting 'RecoveryMechanisms=[{Priority=1,Name=verified_email},{Priority=2,Name=verified_phone_number}]' \
+  --user-pool-tier ESSENTIALS
+```
+   Re-read the pool afterwards and diff it against the saved `describe-user-pool` output: only `LambdaConfig` should differ.
+   (Always compare with the live pool: the values above were correct when written.)
+4. How it behaves: Cognito runs the Lambda only when it is about to create an account. A first-time Google sign-in with
+   an email that is not on the list (or that Google has not verified) is rejected with `not_invited` and no account is
+   created. Admin-created users and everyone who already has an account are unaffected. If the allowlist cannot be read,
+   new Google sign-ups fail closed (`signup_unavailable`). Being on the list only allows account creation: the user is
+   still **pending** until `approve_user.py` approves their `sub`.
+5. Existing Google accounts created before this step are not removed; delete or approve them deliberately.
+
+**Rollback:** run the same `update-user-pool` command without `--lambda-config` (Cognito then has no trigger), then redeploy
+the previous stack version. People with accounts are not affected either way.
+
 ## 3. Frontend
 Set `VITE_AUTH_GOOGLE=true` (Amplify environment variable) and rebuild to show **Continue with Google**. With the
 default (`false`) the button is hidden and only the existing sign-in is offered. Sign-in sends `identity_provider=Google`

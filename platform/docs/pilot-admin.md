@@ -55,6 +55,9 @@ Users who sign in with Google start as **pending** and cannot use paid features 
 `google-signin.md`; approve with `platform/scripts/approve_user.py <sub>` or `PUT /api/v1/admin/users/{sub}`
 `{"approved": true}`. Invited (admin-created) users need no approval.
 
+Who may create a Google account at all is controlled by the sign-up allowlist (`scripts/allow_email.py`, see
+`google-signin.md` section 2b). Allowlisting lets a person create an account; approval lets them use the pilot.
+
 ## Defaults
 20 requests/user/day, 200/user/month, 500 chars, 4 history messages, 600 output tokens (main), 50 (classifier),
 3 specialist calls/request, 30,000 estimated tokens/user/day, 1 concurrent request/user, 300 requests/app/day.

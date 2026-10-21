@@ -5,6 +5,11 @@ import { useAuth } from '../auth/AuthContext';
 /** Turns OAuth error responses into something a person can act on; unknown errors keep their own message. */
 export function describeAuthError(e: unknown): string {
   const text = e instanceof Error ? e.message : '';
+  // Raised by the Cognito pre sign-up trigger when a Google account is not on the invited list.
+  if (/not_invited/i.test(text))
+    return "This Google account hasn't been invited to the pilot. Ask the project owner for an invitation, or sign in with your invited account.";
+  if (/signup_unavailable/i.test(text))
+    return 'Sign-up is temporarily unavailable. Please try again in a few minutes.';
   if (/access_denied/i.test(text))
     return 'Sign-in was cancelled or not allowed. You can try again.';
   if (/redirect_mismatch|redirect_uri/i.test(text))

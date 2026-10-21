@@ -154,6 +154,47 @@ Resources:
       LogGroupName: !Sub /aws/lambda/navigator-ingest-${EnvName}
       RetentionInDays: 30
 
+  # ------------------------------------------------------------------ Google sign-up allowlist
+  # Cognito PRE SIGN-UP trigger: only emails on the allowlist may create a new account with Google. Attaching it to the
+  # user pool is a separate, manual, approved step (platform/docs/google-signin.md); this stack only owns the function.
+  SignupFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      FunctionName: !Sub navigator-signup-${EnvName}
+      CodeUri: .
+      Handler: navigator.signup.handler.handler
+      MemorySize: 128
+      Timeout: 4                               # Cognito gives triggers 5 seconds
+      ReservedConcurrentExecutions: 5          # account creations are rare; this also caps abuse
+      Environment:
+        Variables:
+          ENV_NAME: !Ref EnvName
+          USAGE_TABLE: !Ref UsageTable
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Sid: ReadAllowlistItemOnly
+              Effect: Allow
+              Action: [dynamodb:GetItem]
+              Resource: !GetAtt UsageTable.Arn
+      # Deliberately NO access to the data table, Bedrock, AgentCore, Location or Cognito admin APIs.
+
+  SignupLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/navigator-signup-${EnvName}
+      RetentionInDays: 30
+
+  SignupInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SignupFunction
+      Action: lambda:InvokeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
+
   SchedulerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -502,6 +543,9 @@ Outputs:
     Value: !GetAtt ApiFunctionUrl.FunctionUrl
   DataTableName:
     Value: !Ref DataTable
+  SignupFunctionArn:
+    Description: Attach to the user pool as the PreSignUp trigger (manual, approved step; see docs/google-signin.md)
+    Value: !GetAtt SignupFunction.Arn
   UsageTableName:
     Value: !Ref UsageTable
   DashboardName:

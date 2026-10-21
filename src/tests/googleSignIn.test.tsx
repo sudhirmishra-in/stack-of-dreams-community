@@ -114,6 +114,8 @@ describe('oidc sign-in redirect', () => {
 
 describe('callback errors', () => {
   it.each([
+    ['PreSignUp failed with error not_invited.', /hasn't been invited/],
+    ['PreSignUp failed with error signup_unavailable.', /temporarily unavailable/],
     ['access_denied', /cancelled or not allowed/],
     ['redirect_mismatch', /not set up for that sign-in method/],
     ['No matching state found in storage', /session expired/],

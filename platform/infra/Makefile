@@ -1,6 +1,6 @@
 # SAM "makefile" build, driven by scripts/sam_build.sh (which exports NAVIGATOR_ROOT).
 # Installs Linux/arm64 wheels without Docker, then copies the shared package and fixtures.
-build-ApiFunction build-IngestFunction:
+build-ApiFunction build-IngestFunction build-SignupFunction:
 	uv pip install --quiet --target "$(ARTIFACTS_DIR)" \
 	  --python-platform aarch64-manylinux2014 --python-version 3.12 --only-binary :all: \
 	  -r "$(NAVIGATOR_ROOT)/requirements-lambda.txt"
