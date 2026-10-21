@@ -15,8 +15,8 @@ from navigator.errors import Forbidden, ServiceUnavailable, Unauthorized
 _SUB = re.compile(r"^[A-Za-z0-9_.:-]{8,128}$")
 
 
-# Cognito names federated users "<Provider>_<id>" and puts them in an auto-created group "<poolId>_<Provider>".
-_FEDERATED_USERNAME = re.compile(r"^(Google|Facebook|LoginWithAmazon|SignInWithApple)_")
+# Cognito names federated users "<provider>_<id>" (lowercase in practice, matched case-insensitively) and puts them in an auto-created group "<poolId>_<Provider>".
+_FEDERATED_USERNAME = re.compile(r"^(Google|Facebook|LoginWithAmazon|SignInWithApple)_", re.I)
 
 
 @dataclass(frozen=True)
@@ -80,7 +80,7 @@ class JwtVerifier:
         groups = claims.get("cognito:groups") or []
         group_set = frozenset(g for g in groups if isinstance(g, str)) if isinstance(groups, list) else frozenset()
         username = claims.get("username")
-        federated = any(g.startswith(f"{self.pool_id}_") for g in group_set) or (isinstance(username, str) and bool(_FEDERATED_USERNAME.match(username)))
+        federated = any(g.lower().startswith(f"{self.pool_id}_".lower()) for g in group_set) or (isinstance(username, str) and bool(_FEDERATED_USERNAME.match(username)))
         return Identity(sub, group_set, federated)
 
     def require_admin(self, identity: Identity, admin_group: str) -> None:

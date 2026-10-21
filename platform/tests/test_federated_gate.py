@@ -94,6 +94,9 @@ def test_federated_detection_from_verified_claims():
     assert v.verify(f"Bearer {google()}").federated is True
     assert v.verify(f"Bearer {tok(groups=[GOOGLE_GROUP])}").federated is True      # group alone
     assert v.verify(f"Bearer {tok(username='Google_abc12345')}").federated is True  # username alone
+    # Live Cognito issues LOWERCASE usernames ("google_<id>"); detection must not depend on letter case.
+    assert v.verify(f"Bearer {tok(username='google_110466797490935057990')}").federated is True
+    assert v.verify(f"Bearer {tok(groups=[POOL + '_google'])}").federated is True
     assert v.verify(f"Bearer {tok(sub='native-user-0001', username='native-user-0001')}").federated is False
 
 
