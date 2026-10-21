@@ -11,7 +11,7 @@ class FixtureHttp:
     def __init__(self, directory: str | Path):
         self.dir = Path(directory)
 
-    def post_form_json(self, url: str, form: dict[str, str]) -> Any:
+    def post_form_json(self, url: str, form: dict[str, str], **_options: Any) -> Any:
         return json.loads((self.dir / "overpass_nyc.json").read_text())
 
     def get_json(self, url: str, params: dict[str, Any] | None = None) -> Any:

@@ -40,11 +40,13 @@ class HttpClient:
         self._sleep = sleep
         self._open = opener or urllib.request.urlopen
 
-    def _request(self, req: urllib.request.Request) -> Any:
+    def _request(self, req: urllib.request.Request, *, timeout: float | None = None, max_attempts: int | None = None) -> Any:
+        timeout = self.timeout if timeout is None else timeout
+        attempts = self.max_attempts if max_attempts is None else max_attempts
         last: Exception | None = None
-        for attempt in range(1, self.max_attempts + 1):
+        for attempt in range(1, attempts + 1):
             try:
-                with self._open(req, timeout=self.timeout) as resp:
+                with self._open(req, timeout=timeout) as resp:
                     raw = resp.read(MAX_BYTES + 1)
                     if len(raw) > MAX_BYTES:
                         raise HttpError("response too large")
@@ -60,7 +62,7 @@ class HttpClient:
             except json.JSONDecodeError as e:
                 # Overpass returns an HTML/markdown page when overloaded: treat as retryable.
                 last, delay = HttpError("response was not valid JSON", 502), None
-            if attempt == self.max_attempts:
+            if attempt == attempts:
                 break
             backoff = min(self.max_delay, self.base_delay * (2 ** (attempt - 1)))
             self._sleep(delay if delay is not None else backoff * (0.5 + random.random() / 2))
@@ -72,8 +74,12 @@ class HttpClient:
             url = f"{url}?{urllib.parse.urlencode(params)}"
         return self._request(urllib.request.Request(url, headers={"User-Agent": self.user_agent, "Accept": "application/json"}))
 
-    def post_form_json(self, url: str, form: dict[str, str]) -> Any:
+    def post_form_json(
+        self, url: str, form: dict[str, str], *, timeout: float | None = None, max_attempts: int | None = None
+    ) -> Any:
         data = urllib.parse.urlencode(form).encode()
         return self._request(
-            urllib.request.Request(url, data=data, headers={"User-Agent": self.user_agent, "Accept": "application/json"})
+            urllib.request.Request(url, data=data, headers={"User-Agent": self.user_agent, "Accept": "application/json"}),
+            timeout=timeout,
+            max_attempts=max_attempts,
         )

@@ -154,3 +154,34 @@ def test_http_does_not_retry_client_errors():
     with pytest.raises(HttpError) as e:
         HttpClient("ua", sleep=lambda s: None, opener=opener).get_json("http://x")
     assert e.value.status == 404 and len(calls) == 1
+
+
+def test_http_per_request_timeout_and_attempts_override_defaults():
+    seen = []
+
+    def opener(req, timeout):
+        seen.append(timeout)
+        raise TimeoutError("The read operation timed out")
+
+    client = HttpClient("ua", timeout=30, max_attempts=4, sleep=lambda s: None, opener=opener)
+    with pytest.raises(HttpError):
+        client.post_form_json("http://x", {"data": "q"}, timeout=75, max_attempts=2)
+    assert seen == [75, 75]
+
+
+def test_osm_waits_longer_than_the_overpass_query_and_fits_the_lambda_budget():
+    from navigator.adapters import osm
+
+    seen = {}
+
+    class Spy:
+        def post_form_json(self, url, form, **kw):
+            seen.update(kw, query=form["data"])
+            return {"elements": []}
+
+    list(OsmAdapter(Spy(), "http://x").fetch(None, True))
+    assert f"[timeout:{osm.QUERY_TIMEOUT_S}]" in seen["query"]
+    # A healthy Overpass query may run for its full server-side timeout; the client must outwait it.
+    assert seen["timeout"] > osm.QUERY_TIMEOUT_S
+    # Worst case (every attempt times out, plus backoff) must stay under the 300 s ingest Lambda timeout.
+    assert seen["max_attempts"] * seen["timeout"] + 30 < 300

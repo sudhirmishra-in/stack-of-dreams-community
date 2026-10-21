@@ -22,13 +22,20 @@ LICENSE = "ODbL 1.0"
 ATTRIBUTION = "© OpenStreetMap contributors"
 NYC_AREA_ID = 3600175905  # OSM relation 175905 (New York City) as an Overpass area id
 
+# Overpass runs the query for up to QUERY_TIMEOUT_S before answering, so a client read timeout shorter than that
+# (the HttpClient default is 30 s) fails a perfectly healthy request. Worst case 3 x READ_TIMEOUT_S plus backoff
+# stays inside the 300 s ingest Lambda timeout.
+QUERY_TIMEOUT_S = 55
+READ_TIMEOUT_S = QUERY_TIMEOUT_S + 20
+MAX_ATTEMPTS = 3
+
 _ZIP = re.compile(r"^(\d{5})(?:-\d{4})?$")
 
 
 def build_query(area_id: int = NYC_AREA_ID, newer_than: str | None = None) -> str:
     newer = f'(newer:"{newer_than}")' if newer_than else ""
     return (
-        f"[out:json][timeout:60];area(id:{area_id})->.a;("
+        f"[out:json][timeout:{QUERY_TIMEOUT_S}];area(id:{area_id})->.a;("
         f'nwr(area.a)["amenity"="social_facility"]["social_facility"~"^(food_bank|soup_kitchen)$"]{newer};'
         f'nwr(area.a)["amenity"="food_bank"]{newer};'
         ");out meta center tags 1000;"
@@ -99,7 +106,9 @@ class OsmAdapter:
         # Incremental runs ask only for elements changed since the last successful sync. Deletions are
         # invisible to that query, so only full runs may deactivate missing records.
         newer = None if full or not checkpoint else checkpoint
-        data = self.http.post_form_json(self.url, {"data": build_query(self.area_id, newer)})
+        data = self.http.post_form_json(
+            self.url, {"data": build_query(self.area_id, newer)}, timeout=READ_TIMEOUT_S, max_attempts=MAX_ATTEMPTS
+        )
         elements = data.get("elements") if isinstance(data, dict) else None
         if not isinstance(elements, list):
             raise ValueError("unexpected Overpass response shape")
