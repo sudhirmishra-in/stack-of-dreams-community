@@ -24,6 +24,16 @@ Create e.g. `sudhirmishra/stack-of-dreams-labs`, push this folder (the repo root
    CLI equivalent: `aws amplify update-app --region us-east-2 --app-id <id> --custom-rules '[{"source":"</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>","target":"/index.html","status":"200"}]'`
 5. Deploy once and open the `*.amplifyapp.com` URL to confirm it builds.
 
+## Incident note (2026-10-20): do NOT let Amplify take over the domain's nameservers
+Adding the custom domain in the Amplify console can offer to "manage DNS in Route 53". It then asks you to change the domain's
+**nameservers at the registrar**. Doing that moves the WHOLE domain's DNS to a new, almost empty Route 53 zone, so the apex site
+(GitHub Pages), `www` and Google Workspace e-mail (MX, SPF) stop resolving, while `agents` keeps working. That happened here and was
+repaired by copying the missing records into the Route 53 zone (apex A x4, `www` CNAME, MX x5, SPF TXT and its include TXT).
+Rules: keep the registrar's nameservers as they are and add only the two CNAME records Amplify shows; or, if you really migrate to
+Route 53, first export the complete GoDaddy zone and recreate every record before changing nameservers.
+Current state: DNS is hosted in Route 53 (zone created by Amplify) with the restored records. An empty extra hosted zone
+`agents.sudhirmishra.in` also exists and can be deleted.
+
 ## Custom domain (needs your explicit go-ahead; changes public DNS)
 1. Amplify -> Domain management -> *Add domain* -> `sudhirmishra.in` -> **subdomain `agents` only**, branch `main`.
    (Amplify may offer to manage the apex/www too: **remove those**, we only want `agents`.)
