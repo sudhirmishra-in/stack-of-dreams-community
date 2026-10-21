@@ -22,6 +22,23 @@ Parameters:
     Type: String
     Default: ''
     Description: ARN of the community_navigator runtime. Leave empty until it is deployed (the assistant then answers 503).
+  ResearchHarnessArn:
+    Type: String
+    Default: ''
+    Description: >
+      ARN of the AgentCore harness behind the general ("research") assistant (it may live in another region).
+      Empty = that assistant answers 503. Requests go through the same quota/approval gates as the navigator.
+  ResearchRuntimeArn:
+    Type: String
+    Default: ''
+    Description: ARN of the runtime underneath that harness (the stack output AgentRuntimeArn of the harness project).
+  ResearchRegion:
+    Type: String
+    Default: us-east-1
+  ResearchModelId:
+    Type: String
+    Default: us.amazon.nova-lite-v1:0
+    Description: Model the harness uses. Only labels usage for the spend estimate; the harness config decides the model.
   OrchestratorModelId:
     Type: String
     Default: us.amazon.nova-lite-v1:0
@@ -59,6 +76,7 @@ Parameters:
 Conditions:
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, '']]
   HasRuntime: !Not [!Equals [!Ref AgentRuntimeArn, '']]
+  HasResearchHarness: !And [!Not [!Equals [!Ref ResearchHarnessArn, '']], !Not [!Equals [!Ref ResearchRuntimeArn, '']]]
 
 Globals:
   Function:
@@ -276,6 +294,9 @@ Resources:
           ALLOWED_ORIGINS: !Join [',', !Ref AllowedOrigins]
           AGENT_RUNTIME_ARN: !Ref AgentRuntimeArn
           AGENT_REGION: !Ref AWS::Region
+          RESEARCH_HARNESS_ARN: !If [HasResearchHarness, !Ref ResearchHarnessArn, '']
+          RESEARCH_REGION: !Ref ResearchRegion
+          RESEARCH_MODEL_ID: !Ref ResearchModelId
           ORCHESTRATOR_MODEL_ID: !Ref OrchestratorModelId
           CLASSIFIER_MODEL_ID: !Ref ClassifierModelId
           MOCK_MODE: !Ref MockMode
@@ -322,6 +343,16 @@ Resources:
                 # ForUser is required because every call passes runtimeUserId (the hashed Cognito sub).
                 Action: [bedrock-agentcore:InvokeAgentRuntime, bedrock-agentcore:InvokeAgentRuntimeForUser]
                 Resource: [!Ref AgentRuntimeArn, !Sub '${AgentRuntimeArn}/*']
+          - !Ref AWS::NoValue
+        # The general assistant's harness: invoke only that harness and its runtime (same actions the chat Lambda uses).
+        - !If
+          - HasResearchHarness
+          - Version: '2012-10-17'
+            Statement:
+              - Sid: InvokeResearchHarnessOnly
+                Effect: Allow
+                Action: [bedrock-agentcore:InvokeHarness, bedrock-agentcore:InvokeAgentRuntime, bedrock-agentcore:InvokeAgentRuntimeForUser]
+                Resource: [!Ref ResearchHarnessArn, !Ref ResearchRuntimeArn, !Sub '${ResearchRuntimeArn}/*']
           - !Ref AWS::NoValue
       # AuthType NONE only means "no IAM request signing". The handler rejects every /api/v1 request
       # (except /health) that lacks a valid Cognito access token for this app client.

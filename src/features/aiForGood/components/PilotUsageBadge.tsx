@@ -2,27 +2,30 @@ import { useEffect, useState } from 'react';
 import {
   getPilotUsage,
   PILOT_USAGE_EVENT,
+  researchUsageEvent,
+  type PilotAgent,
   type PilotUsage,
 } from '../../../services/pilotAssistantService';
 
 /** Shows the signed-in user's remaining pilot quota, straight from the server (never computed locally). */
-export function PilotUsageBadge() {
+export function PilotUsageBadge({ agent = 'navigator' }: { agent?: PilotAgent }) {
   const [usage, setUsage] = useState<PilotUsage | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
-    getPilotUsage(ctrl.signal)
+    const eventName = agent === 'research' ? researchUsageEvent : PILOT_USAGE_EVENT;
+    getPilotUsage(ctrl.signal, agent)
       .then(setUsage)
       .catch(() => {
         /* the badge is informational; chat still reports limits when they are hit */
       });
     const onUpdate = (e: Event) => setUsage((e as CustomEvent<PilotUsage>).detail);
-    window.addEventListener(PILOT_USAGE_EVENT, onUpdate);
+    window.addEventListener(eventName, onUpdate);
     return () => {
       ctrl.abort();
-      window.removeEventListener(PILOT_USAGE_EVENT, onUpdate);
+      window.removeEventListener(eventName, onUpdate);
     };
-  }, []);
+  }, [agent]);
 
   if (!usage) return null;
   if (usage.accountStatus === 'pending') {

@@ -35,6 +35,10 @@ docs/PROJECT_CONTEXT.md this file (facts)   docs/OPERATIONS_RUNBOOK.md (procedur
 Tests (rerun 2026-10-21): frontend 136 passing (Vitest), pilot platform 255 passing (pytest), chat backend 15 passing. Lint, typecheck,
 production build, `sam validate --lint` and `agentcore validate` pass. A clean checkout of only the tracked files builds and tests green.
 
+## 2a. Update 2026-10-21: general assistant
+
+The website's general AI Assistant no longer uses the original `testagent` harness (it refused generic questions because the food-bank tool and a one-line prompt made Nova Micro treat everything else as out of scope). The legacy chat Lambda now invokes a new generic harness, `research-agent/` (Nova Lite, no tools, firm no-fabricated-citations rule, accurate AgentCore/Strands/agentic-AI facts in the prompt; us-east-1; CDK stack `AgentCore-researchagent-default`). `testagent` is untouched and still deployed. The legacy chat Lambda has no quotas, so its reserved concurrency is 2. The pilot API now also serves this assistant (`agent: "research"`) with the same quotas, approval gate and kill switch as the navigator (see docs/OPERATIONS_RUNBOOK.md section 2b); the website switches to it once the SAM stack is deployed with `ResearchHarnessArn`.
+
 ## 2. The existing working integration (React -> Lambda -> AgentCore testagent) [LIVE]
 
 `React (/chat route) -> chat Lambda (Function URL, us-east-1, stack stack-of-dreams-api) -> AgentCore harness MyHarness (us-east-1)

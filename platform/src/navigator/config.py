@@ -33,6 +33,8 @@ class QuotaLimits:
     routes_per_user_day: int = 30
     searches_per_user_day: int = 400
     map_requests_per_user_day: int = 6000
+    # The general ("research") assistant takes broader questions than the navigator, so it allows a longer message.
+    research_max_query_chars: int = 1500
     # Cost ceilings for the whole pilot (counted under a shared "__app__" key).
     map_requests_per_app_day: int = 30_000
     routes_per_app_day: int = 500
@@ -73,6 +75,10 @@ class Settings:
     )
     agent_runtime_arn: str = field(default_factory=lambda: _env("AGENT_RUNTIME_ARN"))
     agent_region: str = field(default_factory=lambda: _env("AGENT_REGION", _env("AWS_REGION", "us-east-2")))
+    # General assistant (AgentCore harness, may be in another region than this API). Empty = the research agent is unavailable.
+    research_harness_arn: str = field(default_factory=lambda: _env("RESEARCH_HARNESS_ARN"))
+    research_model_id: str = field(default_factory=lambda: _env("RESEARCH_MODEL_ID", "us.amazon.nova-lite-v1:0"))
+    research_region: str = field(default_factory=lambda: _env("RESEARCH_REGION", "us-east-1"))
     classifier_model_id: str = field(default_factory=lambda: _env("CLASSIFIER_MODEL_ID", "us.amazon.nova-micro-v1:0"))
     orchestrator_model_id: str = field(default_factory=lambda: _env("ORCHESTRATOR_MODEL_ID", "us.amazon.nova-lite-v1:0"))
     # Master switches. The assistant kill switch also exists in DynamoDB (admin-controlled).

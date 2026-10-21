@@ -6,6 +6,9 @@ const TIMEOUT_MS = 60_000;
 const KEY_WINDOW_MS = 120_000;
 
 export const PILOT_USAGE_EVENT = 'pilot-usage';
+/** The general assistant keeps its own allowance, so it publishes on its own event. */
+export const researchUsageEvent = 'pilot-usage-research';
+export type PilotAgent = 'navigator' | 'research';
 
 export interface UsageLimit {
   limit: number;
@@ -127,56 +130,80 @@ async function call(
   return { status: res.status, body };
 }
 
-export async function getPilotUsage(signal?: AbortSignal): Promise<PilotUsage> {
-  const { status, body } = await call('/api/v1/me/usage', { method: 'GET' }, signal);
+export async function getPilotUsage(
+  signal?: AbortSignal,
+  agent: PilotAgent = 'navigator',
+): Promise<PilotUsage> {
+  const path = agent === 'research' ? '/api/v1/me/usage?agent=research' : '/api/v1/me/usage';
+  const { status, body } = await call(path, { method: 'GET' }, signal);
   if (status !== 200) throw friendly(status, body as ApiErrorBody | null);
   return body as PilotUsage;
 }
 
-/** The community-navigator assistant (validation gateway -> AgentCore runtime). Not the legacy /chat service. */
-export const pilotAssistantService: ChatService = {
-  isMock: false,
-  supportsHistory: true,
+/**
+ * An assistant served by the pilot API (sign-in, approval check, kill switch and per-user quotas enforced server-side).
+ *  - navigator: the Community Resource Navigator (validation gateway -> AgentCore runtime).
+ *  - research:  the general assistant (same gates, no topic filter, its own allowance).
+ */
+function createPilotAssistant(agent: PilotAgent): ChatService {
+  const usageEvent = agent === 'research' ? researchUsageEvent : PILOT_USAGE_EVENT;
+  return {
+    isMock: false,
+    supportsHistory: true,
 
-  async sendMessage(request: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
-    const payload = {
-      message: request.message,
-      sessionId: request.sessionId,
-      agentId: 'community-navigator',
-      history: request.history ?? [],
-      idempotencyKey: idempotencyKey(request.sessionId, request.message),
-    };
-    const { status, body } = await call(
-      '/api/v1/assistant',
-      { method: 'POST', body: JSON.stringify(payload) },
-      signal,
-    );
+    async sendMessage(request: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
+      return send(agent, usageEvent, request, signal);
+    },
+  };
+}
 
-    // A polite refusal is a normal answer, not a failure: nothing to retry.
-    if (status === 422) {
-      const msg =
-        (body as ApiErrorBody | null)?.error?.message ??
-        'I can only help with community resources.';
-      return {
-        response: msg,
-        sessionId: request.sessionId,
-        agentId: request.agentId,
-        uncertainty: [],
-      };
-    }
-    if (status !== 200) throw friendly(status, body as ApiErrorBody | null);
+async function send(
+  agent: PilotAgent,
+  usageEvent: string,
+  request: ChatRequest,
+  signal?: AbortSignal,
+): Promise<ChatResponse> {
+  const payload = {
+    message: request.message,
+    sessionId: request.sessionId,
+    agent,
+    agentId: agent === 'research' ? 'research' : 'community-navigator',
+    history: request.history ?? [],
+    idempotencyKey: idempotencyKey(request.sessionId, request.message),
+  };
+  const { status, body } = await call(
+    '/api/v1/assistant',
+    { method: 'POST', body: JSON.stringify(payload) },
+    signal,
+  );
 
-    const b = body as Partial<ChatResponse> & { remaining?: PilotUsage };
-    if (!b || typeof b.response !== 'string')
-      throw new ChatServiceError('The server returned an unexpected response format.');
-    if (b.remaining)
-      window.dispatchEvent(new CustomEvent(PILOT_USAGE_EVENT, { detail: b.remaining }));
+  // The navigator's polite refusal is a normal answer, not a failure: nothing to retry.
+  if (status === 422) {
+    const msg =
+      (body as ApiErrorBody | null)?.error?.message ?? 'I can only help with community resources.';
     return {
-      response: b.response,
+      response: msg,
       sessionId: request.sessionId,
       agentId: request.agentId,
-      citations: b.citations,
-      uncertainty: b.uncertainty,
+      uncertainty: [],
     };
-  },
-};
+  }
+  if (status !== 200) throw friendly(status, body as ApiErrorBody | null);
+
+  const b = body as Partial<ChatResponse> & { remaining?: PilotUsage };
+  if (!b || typeof b.response !== 'string')
+    throw new ChatServiceError('The server returned an unexpected response format.');
+  if (b.remaining) window.dispatchEvent(new CustomEvent(usageEvent, { detail: b.remaining }));
+  return {
+    response: b.response,
+    sessionId: request.sessionId,
+    agentId: request.agentId,
+    citations: b.citations,
+    uncertainty: b.uncertainty,
+  };
+}
+
+/** The community-navigator assistant (validation gateway -> AgentCore runtime). Not the legacy /chat service. */
+export const pilotAssistantService: ChatService = createPilotAssistant('navigator');
+/** The general assistant behind the same quota-enforcing API. */
+export const researchAssistantService: ChatService = createPilotAssistant('research');

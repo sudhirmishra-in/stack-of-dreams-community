@@ -6,40 +6,40 @@ deployment). This file maps the brief to what exists and lists what is still ope
 
 ## 1. Deployed state (verified)
 
-| Item | State |
-|---|---|
-| Frontend | Amplify (us-east-2), `main` auto-builds with lint + tests; live at agents.sudhirmishra.in |
-| Chat backend (`testagent`) | Lambda Function URL, us-east-1, unchanged |
-| Pilot platform | SAM stack `navigator-pilot`, us-east-2 (API + ingest Lambdas, 2 DynamoDB tables, 3 schedules, 8 alarms, dashboard, budget) |
-| Agent runtime | AgentCore `community_navigator`, us-east-2, READY (separate CDK project, `platform/agentcore`) |
-| Auth | Cognito, invite-only; production callback URLs configured 2026-10-20 |
-| Environments | One environment only (`pilot`). There is no separate dev stack. |
+| Item                       | State                                                                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Frontend                   | Amplify (us-east-2), `main` auto-builds with lint + tests; live at agents.sudhirmishra.in                                  |
+| Chat backend (`testagent`) | Lambda Function URL, us-east-1, unchanged                                                                                  |
+| Pilot platform             | SAM stack `navigator-pilot`, us-east-2 (API + ingest Lambdas, 2 DynamoDB tables, 3 schedules, 8 alarms, dashboard, budget) |
+| Agent runtime              | AgentCore `community_navigator`, us-east-2, READY (separate CDK project, `platform/agentcore`)                             |
+| Auth                       | Cognito, invite-only; production callback URLs configured 2026-10-20                                                       |
+| Environments               | One environment only (`pilot`). There is no separate dev stack.                                                            |
 
 ## 2. Brief vs. implementation
 
-| Brief item | Status | Notes |
-|---|---|---|
-| Real data source (NYC, reusable licence) | Done | OpenStreetMap/Overpass (ODbL), NYC Open Data Community Food Connection. Licence, schema, pagination in `platform/docs/data-sources.md` |
-| Adapters, normalisation, provenance, dedup, idempotent upserts, backoff, partial failure | Done | `platform/src/navigator/{adapters,ingest,store}` |
-| EventBridge sync + CloudWatch monitoring | Done, **one defect** | OSM incremental sync fails with an Overpass read timeout; alarm `navigator-pilot-sync-failed` is in ALARM. No data lost |
-| 211 and partner adapters | Done as disabled config | Not active and not claimed active; needs authorization |
-| Deterministic search API (no LLM) | Done | `POST /api/v1/resources/search`, `GET /api/v1/resources/{id}` |
-| Separate AgentCore runtime + Strands orchestrator + 4 specialists | Done | Agents-as-tools in one runtime; max 3 specialist calls; per-request limits via hooks |
-| Never fabricate inventory | Done | Real OSM records are "unverified, inventory unknown"; inventory exists only in a labelled demo namespace; output guard redacts unsupported contacts/quantities |
-| Cognito invite-only | Done | Admin-create only, MFA off |
-| Quotas (20/day, 200/month, 30k tokens, 600 output (raised from the 400 in the original brief), 3 specialists, 1 concurrent, 300/app/day) | Done | Atomic DynamoDB `TransactWriteItems`, enforced before any model or runtime call |
-| Token accounting across classifier, orchestrator, specialists | Done | Ledger settles actual tokens; monthly-delta bug fixed and covered by a test |
-| Validation gateway; classifier only when needed | Done | Fails closed; unauthenticated, over-quota and unrelated requests never reach Bedrock |
-| AgentCore native cost controls | Done | Runtime lifecycle (idle 120s, max 900s), reserved Lambda concurrency, Bedrock model/token caps, budget + alarms |
-| `GET /api/v1/me/usage` | Done | Used by `PilotUsageBadge` |
-| Admin quota management + kill switch | Done in API | `PUT /admin/quotas`, `/admin/switch`, `/admin/users/{sub}`. **Not usable yet:** the Cognito `pilot-admin` group does not exist |
-| React wiring (search, details, map, assistant, usage, login) | Done | Verified in production on 2026-10-20 |
-| Stale / unavailable inventory labelling | Done | |
-| `testagent` route preserved | Done | Regression-tested; verified working |
-| Tests | Done | Frontend 116, platform 210, plus backend; CI on GitHub Actions |
-| Dev environment first, then promote | **Not done** | Everything went to the single `pilot` stack |
-| Specialist agents exercised against live Bedrock | **Not done** | Only the orchestrator path was exercised live |
-| Signed-in smoke test with a real token | **Partly** | User verified manually in the UI; the scripted `smoke_aws.py` has not been run with a token |
+| Brief item                                                                                                                               | Status                  | Notes                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Real data source (NYC, reusable licence)                                                                                                 | Done                    | OpenStreetMap/Overpass (ODbL), NYC Open Data Community Food Connection. Licence, schema, pagination in `platform/docs/data-sources.md`                         |
+| Adapters, normalisation, provenance, dedup, idempotent upserts, backoff, partial failure                                                 | Done                    | `platform/src/navigator/{adapters,ingest,store}`                                                                                                               |
+| EventBridge sync + CloudWatch monitoring                                                                                                 | Done, **one defect**    | OSM incremental sync fails with an Overpass read timeout; alarm `navigator-pilot-sync-failed` is in ALARM. No data lost                                        |
+| 211 and partner adapters                                                                                                                 | Done as disabled config | Not active and not claimed active; needs authorization                                                                                                         |
+| Deterministic search API (no LLM)                                                                                                        | Done                    | `POST /api/v1/resources/search`, `GET /api/v1/resources/{id}`                                                                                                  |
+| Separate AgentCore runtime + Strands orchestrator + 4 specialists                                                                        | Done                    | Agents-as-tools in one runtime; max 3 specialist calls; per-request limits via hooks                                                                           |
+| Never fabricate inventory                                                                                                                | Done                    | Real OSM records are "unverified, inventory unknown"; inventory exists only in a labelled demo namespace; output guard redacts unsupported contacts/quantities |
+| Cognito invite-only                                                                                                                      | Done                    | Admin-create only, MFA off                                                                                                                                     |
+| Quotas (20/day, 200/month, 30k tokens, 600 output (raised from the 400 in the original brief), 3 specialists, 1 concurrent, 300/app/day) | Done                    | Atomic DynamoDB `TransactWriteItems`, enforced before any model or runtime call                                                                                |
+| Token accounting across classifier, orchestrator, specialists                                                                            | Done                    | Ledger settles actual tokens; monthly-delta bug fixed and covered by a test                                                                                    |
+| Validation gateway; classifier only when needed                                                                                          | Done                    | Fails closed; unauthenticated, over-quota and unrelated requests never reach Bedrock                                                                           |
+| AgentCore native cost controls                                                                                                           | Done                    | Runtime lifecycle (idle 120s, max 900s), reserved Lambda concurrency, Bedrock model/token caps, budget + alarms                                                |
+| `GET /api/v1/me/usage`                                                                                                                   | Done                    | Used by `PilotUsageBadge`                                                                                                                                      |
+| Admin quota management + kill switch                                                                                                     | Done in API             | `PUT /admin/quotas`, `/admin/switch`, `/admin/users/{sub}`. **Not usable yet:** the Cognito `pilot-admin` group does not exist                                 |
+| React wiring (search, details, map, assistant, usage, login)                                                                             | Done                    | Verified in production on 2026-10-20                                                                                                                           |
+| Stale / unavailable inventory labelling                                                                                                  | Done                    |                                                                                                                                                                |
+| `testagent` route preserved                                                                                                              | Done                    | Regression-tested; verified working                                                                                                                            |
+| Tests                                                                                                                                    | Done                    | Frontend 116, platform 210, plus backend; CI on GitHub Actions                                                                                                 |
+| Dev environment first, then promote                                                                                                      | **Not done**            | Everything went to the single `pilot` stack                                                                                                                    |
+| Specialist agents exercised against live Bedrock                                                                                         | **Not done**            | Only the orchestrator path was exercised live                                                                                                                  |
+| Signed-in smoke test with a real token                                                                                                   | **Partly**              | User verified manually in the UI; the scripted `smoke_aws.py` has not been run with a token                                                                    |
 
 ## 3. Remaining work (proposed order)
 

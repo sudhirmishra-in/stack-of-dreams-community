@@ -10,6 +10,7 @@ import boto3
 from botocore.config import Config
 from pydantic import BaseModel, Field, ValidationError
 
+from navigator.gateway.invoker_text import strip_thinking
 from navigator.models import Citation
 
 
@@ -72,6 +73,62 @@ class AgentCoreInvoker:
             # Keep the AWS error code/message (never the request) so operators can see WHY in the logs.
             detail = getattr(e, "response", {}).get("Error", {}) if hasattr(e, "response") else {}
             raise InvokerError(f"{type(e).__name__}: {detail.get('Message') or e}"[:300]) from e
+
+
+HARNESS_MAX_ITERATIONS = 6  # per-call cap, in addition to the limits configured on the harness itself
+HARNESS_MAX_TOKENS = 8000
+
+
+class HarnessInvoker:
+    """The general ("research") assistant: an AgentCore *harness* (declarative agent, no custom code).
+
+    Sends the bounded history plus the new question as messages (the harness keeps no memory of its own), enforces
+    per-call caps on top of the harness's own, and returns the harness's REAL token usage from the stream metadata so
+    quotas are settled on actual use."""
+
+    def __init__(self, region: str, harness_arn: str, client: Any = None, model_id: str = "us.amazon.nova-lite-v1:0"):
+        self.harness_arn, self.model_id = harness_arn, model_id  # model_id only labels usage for spend estimates
+        self._client = client or boto3.client(
+            "bedrock-agentcore", region_name=region, config=Config(retries={"max_attempts": 1}, connect_timeout=3, read_timeout=70)
+        )
+
+    def invoke(self, payload: dict[str, Any], session_key: str, user_key: str, timeout: int) -> RuntimeResult:
+        if not self.harness_arn:
+            raise InvokerError("harness ARN not configured")
+        messages = [{"role": m["role"], "content": [{"text": m["content"]}]} for m in payload.get("history", [])]
+        messages.append({"role": "user", "content": [{"text": str(payload["prompt"])}]})
+        try:
+            resp = self._client.invoke_harness(
+                harnessArn=self.harness_arn,
+                runtimeSessionId=session_key,
+                runtimeUserId=user_key,
+                messages=messages,
+                maxIterations=HARNESS_MAX_ITERATIONS,
+                maxTokens=HARNESS_MAX_TOKENS,
+                timeoutSeconds=max(5, int(timeout)),
+            )
+            text, in_tok, out_tok = "", None, None
+            for event in resp.get("stream") or []:
+                delta = (event.get("contentBlockDelta") or {}).get("delta") or {}
+                if "text" in delta:
+                    text += delta["text"] or ""
+                usage = (event.get("metadata") or {}).get("usage")
+                if usage:
+                    in_tok, out_tok = int(usage.get("inputTokens", 0)), int(usage.get("outputTokens", 0))
+                if any(k in event for k in ("internalServerException", "validationException", "runtimeClientError")):
+                    raise InvokerError("the agent reported an error")
+        except InvokerError:
+            raise
+        except Exception as e:
+            detail = getattr(e, "response", {}).get("Error", {}) if hasattr(e, "response") else {}
+            raise InvokerError(f"{type(e).__name__}: {detail.get('Message') or e}"[:300]) from e
+        answer = strip_thinking(text)
+        if not answer:
+            raise InvokerError("the agent returned an empty reply")
+        usage_out = None
+        if in_tok is not None:
+            usage_out = RuntimeUsage(modelInvocations=1, byModel=[ModelUsage(modelId=self.model_id, inputTokens=in_tok, outputTokens=out_tok or 0)])
+        return RuntimeResult(response=answer, usage=usage_out)
 
 
 class MockInvoker:

@@ -7,6 +7,7 @@ import { ChatHeader } from '../components/chat/ChatHeader';
 import { ChatWindow } from '../components/chat/ChatWindow';
 import { useChat } from '../hooks/useChat';
 import { useBranding } from '../config/branding';
+import { generalChatContext } from '../config/generalChat';
 
 export default function ChatPage({ context }: { context?: ChatContext }) {
   const { agents, defaultAgentId } = useBranding();
@@ -15,7 +16,9 @@ export default function ChatPage({ context }: { context?: ChatContext }) {
   if (!agent || !agent.interactive) return <Navigate to="/agents" replace />;
   // An agent with its own page (AI for Good) must never be served by the general chat window and service.
   if (agent.route && !context) return <Navigate to={agent.route} replace />;
-  return <ChatView key={agent.id} agentId={agent.id} context={context} />;
+  // The general assistant is served through the quota-enforcing pilot API whenever that API is configured.
+  const resolved = context ?? (agent.id === 'assistant' ? generalChatContext() : undefined);
+  return <ChatView key={agent.id} agentId={agent.id} context={resolved} />;
 }
 
 function ChatView({ agentId, context }: { agentId: string; context?: ChatContext }) {

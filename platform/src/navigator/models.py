@@ -117,6 +117,9 @@ class AssistantRequest(Strict):
     message: str = Field(min_length=1)
     sessionId: str = Field(min_length=8, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]+$")
     agentId: str = Field(default="community-navigator", max_length=64)
+    # Which assistant answers. "navigator" = Community Resource Navigator (topic-restricted, grounded in the directory);
+    # "research" = the general assistant (any general/technical question; no directory access).
+    agent: Literal["navigator", "research"] = "navigator"
     history: list[HistoryMessage] = Field(default_factory=list, max_length=20)
     idempotencyKey: str | None = Field(default=None, min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
     context: dict[str, str] | None = None  # small, optional, e.g. {"zipCode": "10027"}

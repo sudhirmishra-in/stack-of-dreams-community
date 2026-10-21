@@ -7,7 +7,7 @@
 "Stack of Dreams Labs" React app + the Community Resource Navigator (AI for Good) pilot. Three working parts:
 
 1. **Frontend** (`src/`): React 19, TypeScript, Vite, Tailwind 4. Routes include `/chat` and `/ai-for-good/*`.
-2. **Existing chat API** (`backend/`, us-east-1): React -> Lambda Function URL -> AgentCore harness `MyHarness` (the sibling `../testagent` project). Working. Do not change its contract.
+2. **Legacy chat API** (`backend/`, us-east-1): React -> Lambda Function URL -> an AgentCore harness. Since 2026-10-21 it points at the new `research-agent/` harness (Nova Lite, generic research assistant; `testagent`'s harness is still deployed, untouched, and is the rollback target). It has NO per-user quota, so its concurrency is capped at 2 and the website's general assistant is being moved behind the pilot API (see runbook, "General assistant"). Do not change its contract.
 3. **Pilot platform** (`platform/`, **us-east-2**): DynamoDB, scheduled ingestion (OpenStreetMap, NYC Open Data), authenticated API Lambda, validation gateway with DynamoDB quotas, and the Strands AgentCore runtime `community_navigator` (orchestrator + 4 specialist agent-tools in ONE runtime).
    Access to the AI agents is **invite-only**: admin-created Cognito users, or Google sign-in for emails on a sign-up allowlist that the owner then approves by Cognito `sub` (pending until approved).
 

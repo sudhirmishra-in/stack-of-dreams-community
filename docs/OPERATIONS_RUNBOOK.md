@@ -97,6 +97,23 @@ object (`describe-user-pool` / `describe-user-pool-client`) to a scratch file, b
 field, apply, re-read, diff, and restore immediately if anything else changed. The pre sign-up trigger is attached to the pool
 (`LambdaConfig.PreSignUp`); the stack deploys the Lambda but never owns the pool. Full commands: `platform/docs/google-signin.md`.
 
+## 2b. The two assistants and where each one is controlled
+
+| Assistant             | Website                  | Served by                                                                                          | Agent                                                      | Quotas, pending gate, kill switch      |
+| --------------------- | ------------------------ | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------- |
+| AI for Good Assistant | `/ai-for-good/assistant` | pilot API (`agent: "navigator"`)                                                                   | `community_navigator` runtime (us-east-2)                  | Yes                                    |
+| General AI Assistant  | `/chat/assistant`        | pilot API (`agent: "research"`) once `ResearchHarnessArn` is set; otherwise the legacy chat Lambda | `research-agent/` harness (us-east-1, Nova Lite, no tools) | Yes (via pilot API); legacy path: none |
+
+`research` mode reuses the same gateway code: sign-in, pending-approval check, kill switch (`assistantEnabled`), disabled user, atomic
+per-user daily/monthly quota, shared pilot-wide daily cap, one request at a time, settle on the harness's real token usage
+(stream `metadata.usage`). Differences: no community-resources topic filter, messages up to 1,500 characters, and its **own
+per-user counters** (ledger key `U#<sub>#research#...`; the pilot-wide `G#D#<day>` counter is shared). `GET /api/v1/me/usage?agent=research`
+returns that allowance. The legacy chat Lambda (`backend/`, us-east-1) keeps working as the rollback path but has no quotas: its
+reserved concurrency is capped at 2. The harness project is `research-agent/` (deploy: `cd research-agent && agentcore deploy -y`).
+To connect the pilot API to it, redeploy `navigator-pilot` with `ResearchHarnessArn`, `ResearchRuntimeArn` (stack outputs of
+`AgentCore-researchagent-default`) and keep `ResearchRegion=us-east-1`. Rollback: redeploy with those two parameters empty (the
+website then falls back to the legacy chat path).
+
 ## 3. Quotas and costs (current)
 
 Per user: 20 requests/day, 200/month, 500 chars, 4 history messages, 30k estimated tokens/day, 1 concurrent. Pilot: 300 requests/day.

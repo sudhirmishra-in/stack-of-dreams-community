@@ -4,4 +4,5 @@ package-lock.json
 backend/dist
 backend/node_modules
 platform
+research-agent
 backend

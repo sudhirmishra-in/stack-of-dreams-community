@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ['./src/tests/setup.ts'],
       css: false,
-      exclude: ['backend/**', 'platform/**', 'node_modules/**', 'dist/**'],
+      exclude: ['backend/**', 'platform/**', 'research-agent/**', 'node_modules/**', 'dist/**'],
     },
   };
 });

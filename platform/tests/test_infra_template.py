@@ -14,7 +14,9 @@ def test_api_role_can_invoke_the_runtime_for_a_user():
 def test_api_role_can_only_reach_the_runtime_given_as_a_parameter():
     # No hard-coded AgentCore ARNs: the only invokable runtime is the AgentRuntimeArn parameter.
     assert "arn:aws:bedrock-agentcore" not in TEMPLATE
-    assert TEMPLATE.count("bedrock-agentcore:InvokeAgentRuntime") == 2  # the two actions, on one statement
+    # Two statements, each limited to ARNs that arrive as parameters: the navigator runtime (2 actions) and, when one is
+    # configured, the general assistant's harness (its own 2 runtime actions plus InvokeHarness). Nothing else.
+    assert TEMPLATE.count("bedrock-agentcore:InvokeAgentRuntime") == 4
 
 
 def test_invoker_error_keeps_the_aws_reason_for_logs():
@@ -65,3 +67,17 @@ def test_stack_never_modifies_the_user_pool():
 
 def test_signup_function_is_built_like_the_other_lambdas():
     assert "build-SignupFunction" in (Path(__file__).resolve().parents[1] / "infra" / "Makefile").read_text()
+
+
+def test_api_can_invoke_only_the_configured_research_harness_and_only_when_it_is_configured():
+    start = TEMPLATE.index("InvokeResearchHarnessOnly")
+    block = TEMPLATE[start - 400 : start + 700]
+    assert "HasResearchHarness" in block  # the statement disappears when no harness is configured
+    assert "bedrock-agentcore:InvokeHarness" in block
+    assert "Resource: [!Ref ResearchHarnessArn, !Ref ResearchRuntimeArn," in block  # no wildcard, only the given ARNs
+    assert "Resource: '*'" not in block.split("InvokeResearchHarnessOnly")[1][:300]
+
+
+def test_research_harness_settings_reach_the_api_function():
+    assert "RESEARCH_HARNESS_ARN: !If [HasResearchHarness, !Ref ResearchHarnessArn, '']" in TEMPLATE
+    assert "RESEARCH_REGION: !Ref ResearchRegion" in TEMPLATE

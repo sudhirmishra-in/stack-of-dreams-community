@@ -1,0 +1,8 @@
+[
+  {
+    "name": "default",
+    "description": "Default target (us-east-1, same region as the chat API and testagent)",
+    "account": "160102057204",
+    "region": "us-east-1"
+  }
+]

@@ -254,7 +254,11 @@ class App:
         return 200, self.d.pipeline.handle(req.identity, ar, req.correlation_id)  # type: ignore[arg-type]
 
     def me_usage(self, req: Request):
-        return 200, build_usage(self.d.ledger, req.identity.sub, req.correlation_id, self._eff(req), req.identity.federated)  # type: ignore[union-attr]
+        agent = req.query.get("agent", "navigator")
+        if agent not in ("navigator", "research"):
+            raise BadRequest("agent must be 'navigator' or 'research'")
+        ledger = self.d.ledger.scoped("research") if agent == "research" else self.d.ledger  # each assistant has its own counters
+        return 200, build_usage(ledger, req.identity.sub, req.correlation_id, self._eff(req), req.identity.federated)  # type: ignore[union-attr]
 
     # ---------- map proxy (no browser-side AWS key; see location/maps.py) ----------
 
@@ -342,7 +346,7 @@ _APP: App | None = None
 
 def build_app(settings: Settings | None = None) -> App:
     from navigator.gateway.classifier import BedrockClassifier
-    from navigator.gateway.invoker import AgentCoreInvoker, MockInvoker
+    from navigator.gateway.invoker import AgentCoreInvoker, HarnessInvoker, MockInvoker
     from navigator.location.client import CachedZipGeocoder
 
     s = settings or Settings()
@@ -353,7 +357,8 @@ def build_app(settings: Settings | None = None) -> App:
     search = SearchService(store, CachedZipGeocoder(store, location), s)
     invoker = MockInvoker() if s.mock_mode else AgentCoreInvoker(s.agent_region, s.agent_runtime_arn)
     classifier = BedrockClassifier(s.classifier_model_id, s.region)
-    pipeline = AssistantPipeline(ledger, invoker, classifier, s)
+    research = HarnessInvoker(s.research_region, s.research_harness_arn, model_id=s.research_model_id) if s.research_harness_arn and not s.mock_mode else None
+    pipeline = AssistantPipeline(ledger, invoker, classifier, s, research)
     return App(Deps(s, JwtVerifier(s.cognito_user_pool_id, s.cognito_client_id), store, ledger, search, pipeline, location, maps))
 
 

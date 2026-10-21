@@ -42,8 +42,9 @@ Resources:
       MemorySize: 256
       Timeout: 60
       # Cost/abuse ceiling: the URL is public (requests are rejected in code without a valid token),
-      # so cap parallel executions instead of leaving it unlimited.
-      ReservedConcurrentExecutions: 10
+      # so cap parallel executions instead of leaving it unlimited. Lowered 10 -> 2 on 2026-10-21 because this path has no
+      # per-user quota yet; raise it only after the general assistant moves behind the quota-enforcing pilot API.
+      ReservedConcurrentExecutions: 2
       Environment:
         Variables:
           AGENT_REGION: !Ref AWS::Region

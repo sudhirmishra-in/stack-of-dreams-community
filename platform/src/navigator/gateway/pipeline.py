@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import replace
 from typing import Any
 
 from navigator.config import QuotaLimits, Settings
@@ -53,10 +54,17 @@ def build_usage(ledger: UsageLedger, sub: str, correlation_id: str, eff=None, fe
 
 
 class AssistantPipeline:
-    def __init__(self, ledger: UsageLedger, invoker: AgentInvoker, classifier: IntentClassifier | None, settings: Settings):
+    def __init__(self, ledger: UsageLedger, invoker: AgentInvoker, classifier: IntentClassifier | None, settings: Settings,
+                 research_invoker: AgentInvoker | None = None):
         self.ledger, self.invoker, self.classifier, self.settings = ledger, invoker, classifier, settings
+        self.research_invoker = research_invoker  # the general assistant; None = not configured
 
     def handle(self, identity: Identity, req: AssistantRequest, correlation_id: str) -> AssistantResponse:
+        if req.agent == "research":
+            return self._handle_research(identity, req, correlation_id)
+        return self._handle_navigator(identity, req, correlation_id)
+
+    def _handle_navigator(self, identity: Identity, req: AssistantRequest, correlation_id: str) -> AssistantResponse:
         sub = identity.sub
         eff = self.ledger.effective(sub)  # 503 if the ledger is unreachable: fail closed
         if identity.federated and not eff.approved:  # defense in depth: the API layer already refuses these
@@ -119,6 +127,46 @@ class AssistantPipeline:
 
         return self._finish(sub, reservation, req, result, classifier_in, classifier_out, classifier_usd, limits, correlation_id)
 
+    def _handle_research(self, identity: Identity, req: AssistantRequest, correlation_id: str) -> AssistantResponse:
+        """The general assistant: the SAME gates as the navigator (pending approval, kill switch, disabled user, atomic
+        per-user daily/monthly quota, shared pilot-wide cap, one request at a time, settle on real tokens), minus the
+        community-resources topic filter, with its own per-user counters."""
+        sub = identity.sub
+        ledger = self.ledger.scoped("research")
+        eff = self.ledger.effective(sub)
+        if identity.federated and not eff.approved:
+            raise PendingApproval("Your account is waiting for approval.")
+        if not self.settings.assistant_enabled or not eff.assistant_enabled:
+            raise ServiceUnavailable("The assistant is temporarily paused.", headers={"Retry-After": "300"})
+        if eff.disabled:
+            raise Forbidden("Pilot access is disabled for this account.")
+        if self.research_invoker is None:
+            raise ServiceUnavailable("The general assistant is not available right now.", headers={"Retry-After": "60"})
+        limits = eff.limits
+        text_limits = replace(limits, max_query_chars=limits.research_max_query_chars)
+        message = clean_message(req.message, text_limits)
+        history = clean_history(req.history, text_limits)
+
+        key = req.idempotencyKey or uuid.uuid4().hex
+        if req.idempotencyKey:
+            cached = ledger.cached_response(sub, key)
+            if cached:
+                log("assistant_replay", correlationId=correlation_id, agent="research")
+                return AssistantResponse.model_validate({**json.loads(cached), "correlationId": correlation_id})
+
+        reservation = ledger.reserve(sub, key, limits)  # atomic quota + concurrency, or 429/409/503; nothing is spent yet
+        try:
+            result = self.research_invoker.invoke({"prompt": message, "history": history}, runtime_session_id(sub, "research:" + req.sessionId), _user_key(sub), limits.request_timeout_seconds)
+        except InvokerError as e:
+            self._safe_release(reservation, 0, ledger)
+            metrics.emit("AgentInvokeFailed", 1)
+            log("agent_error", correlationId=correlation_id, agent="research", error=str(e))
+            raise ServiceUnavailable("The assistant is unavailable right now. Please try again.", headers={"Retry-After": "10"}) from e
+        except Exception:
+            self._safe_release(reservation, 0, ledger)
+            raise
+        return self._finish(sub, reservation, req, result, 0, 0, 0.0, limits, correlation_id, ledger=ledger, agent_id="research")
+
     # ---------- helpers ----------
 
     def _payload(self, message: str, history: list[dict[str, str]], req: AssistantRequest, limits: QuotaLimits) -> dict[str, Any]:
@@ -137,14 +185,16 @@ class AssistantPipeline:
             },
         }
 
-    def _safe_release(self, reservation, classifier_tokens: int) -> None:
+    def _safe_release(self, reservation, classifier_tokens: int, ledger: UsageLedger | None = None) -> None:
         try:
-            self.ledger.release(reservation)
+            (ledger or self.ledger).release(reservation)
         except Exception as e:  # conservative: leave the estimate charged rather than crash the error path
             metrics.emit("ReleaseFailed", 1)
             log("release_failed", error=type(e).__name__)
 
-    def _finish(self, sub, reservation, req, result: RuntimeResult, c_in, c_out, c_usd, limits, correlation_id) -> AssistantResponse:
+    def _finish(self, sub, reservation, req, result: RuntimeResult, c_in, c_out, c_usd, limits, correlation_id,
+                ledger: UsageLedger | None = None, agent_id: str = "community-navigator") -> AssistantResponse:
+        ledger = ledger or self.ledger
         usage = result.usage
         if usage is None:
             # The runtime did not report usage: charge the reservation rather than assume zero.
@@ -164,14 +214,14 @@ class AssistantPipeline:
         body = AssistantResponse(
             response=result.response,
             sessionId=req.sessionId,
-            agentId="community-navigator",
+            agentId=agent_id,
             citations=result.citations,
             uncertainty=result.uncertainty,
             usage=AgentUsage(inputTokens=in_tok, outputTokens=out_tok, modelInvocations=invocations, specialistCalls=specialists, estimatedUsd=usd),
             correlationId=correlation_id,
         )
         try:
-            self.ledger.settle(
+            ledger.settle(
                 reservation, input_tokens=in_tok, output_tokens=out_tok, usd=usd or 0.0,
                 response_json=body.model_dump_json(exclude={"correlationId", "remaining"}),
             )
@@ -182,7 +232,7 @@ class AssistantPipeline:
         if usd is not None:
             metrics.emit("EstimatedSpendUsd", usd, unit="None")
         try:
-            body.remaining = build_usage(self.ledger, sub, correlation_id)
+            body.remaining = build_usage(ledger, sub, correlation_id)
         except ServiceUnavailable:
             body.remaining = None
         return body

@@ -66,6 +66,7 @@ class Reservation:
     day: str
     month: str
     now: float
+    scope: str = ""  # "" = navigator counters; "#research" = the general assistant's own per-user counters
 
 
 @dataclass(frozen=True)
@@ -94,8 +95,22 @@ class UsageLedger:
         self._client = ddb.meta.client
         self.table_name = table_name
         self._clock = clock
+        self._scope = ""  # see scoped()
 
     # ---------- keys ----------
+
+    def scoped(self, name: str) -> "UsageLedger":
+        """A view of the same table with its OWN per-user daily/monthly counters (e.g. the general assistant).
+        The pilot-wide daily counter, the concurrency slot and idempotency records stay shared on purpose: the pilot
+        cap covers every assistant and a person runs one request at a time."""
+        import copy
+
+        c = copy.copy(self)
+        c._scope = f"#{name}"
+        return c
+
+    def _u(self, sub: str) -> str:
+        return f"U#{sub}{self._scope}"
 
     @staticmethod
     def _k(pk: str, sk: str = "CTR") -> dict[str, str]:
@@ -135,7 +150,7 @@ class UsageLedger:
         for slot in range(slots):
             try:
                 self._reserve_tx(sub, request_key, limits, est, day, month, now, slot)
-                return Reservation(sub, request_key, slot, est, day, month, now)
+                return Reservation(sub, request_key, slot, est, day, month, now, self._scope)
             except _SlotBusy as e:
                 last_error = e
                 continue
@@ -151,7 +166,7 @@ class UsageLedger:
             {  # 0: user daily
                 "Update": {
                     "TableName": self.table_name,
-                    "Key": self._ser(self._k(f"U#{sub}#D#{day}")),
+                    "Key": self._ser(self._k(f"{self._u(sub)}#D#{day}")),
                     "UpdateExpression": "ADD reqs :one, tokens :est SET #ttl = :ttl",
                     "ConditionExpression": "(attribute_not_exists(reqs) OR reqs < :dreq) AND (attribute_not_exists(tokens) OR tokens <= :tokmax)",
                     "ExpressionAttributeNames": {"#ttl": "ttl"},
@@ -165,7 +180,7 @@ class UsageLedger:
             {  # 1: user monthly
                 "Update": {
                     "TableName": self.table_name,
-                    "Key": self._ser(self._k(f"U#{sub}#M#{month}")),
+                    "Key": self._ser(self._k(f"{self._u(sub)}#M#{month}")),
                     "UpdateExpression": "ADD reqs :one SET #ttl = :ttl",
                     "ConditionExpression": "attribute_not_exists(reqs) OR reqs < :mreq",
                     "ExpressionAttributeNames": {"#ttl": "ttl"},
@@ -265,8 +280,8 @@ class UsageLedger:
             req_expr += ", cachedResponse = :c"
             req_vals[":c"] = cached
         items = [
-            upd(f"U#{r.sub}#D#{r.day}", delta),  # daily/global counters held the estimate: apply the delta
-            upd(f"U#{r.sub}#M#{r.month}", actual),  # the monthly counter never held an estimate: add actuals
+            upd(f"U#{r.sub}{r.scope}#D#{r.day}", delta),  # daily/global counters held the estimate: apply the delta
+            upd(f"U#{r.sub}{r.scope}#M#{r.month}", actual),  # the monthly counter never held an estimate: add actuals
             upd(f"G#D#{r.day}", delta),
             {"Update": {"TableName": self.table_name, "Key": self._ser({"PK": f"REQ#{r.sub}#{r.request_key}", "SK": "R"}),
                         "UpdateExpression": req_expr, "ExpressionAttributeNames": {"#st": "status"},
@@ -295,8 +310,8 @@ class UsageLedger:
                                "ExpressionAttributeValues": self._ser(vals)}}
 
         items = [
-            rev(f"U#{r.sub}#D#{r.day}", True),
-            rev(f"U#{r.sub}#M#{r.month}", False),
+            rev(f"U#{r.sub}{r.scope}#D#{r.day}", True),
+            rev(f"U#{r.sub}{r.scope}#M#{r.month}", False),
             rev(f"G#D#{r.day}", True),
             {"Delete": {**ttl_free, "Key": self._ser({"PK": f"REQ#{r.sub}#{r.request_key}", "SK": "R"}),
                         "ConditionExpression": "#st = :res", "ExpressionAttributeNames": {"#st": "status"},
@@ -321,7 +336,7 @@ class UsageLedger:
         now = self._clock()
         try:
             self.table.update_item(
-                Key=self._k(f"U#{sub}#D#{_day(now)}"),
+                Key=self._k(f"{self._u(sub)}#D#{_day(now)}"),
                 UpdateExpression=f"ADD ev_{kind} :one SET #ttl = :ttl",
                 ConditionExpression=f"attribute_not_exists(ev_{kind}) OR ev_{kind} < :max",
                 ExpressionAttributeNames={"#ttl": "ttl"},
@@ -351,7 +366,7 @@ class UsageLedger:
 
     def snapshot(self, sub: str, limits: QuotaLimits) -> UsageSnapshot:
         now = self._clock()
-        keys = [self._k(f"U#{sub}#D#{_day(now)}"), self._k(f"U#{sub}#M#{_month(now)}"), self._k(f"G#D#{_day(now)}")]
+        keys = [self._k(f"{self._u(sub)}#D#{_day(now)}"), self._k(f"{self._u(sub)}#M#{_month(now)}"), self._k(f"G#D#{_day(now)}")]
         try:
             resp = self._ddb.batch_get_item(RequestItems={self.table_name: {"Keys": keys, "ConsistentRead": True}})
         except ClientError as e:
