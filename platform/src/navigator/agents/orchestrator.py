@@ -94,6 +94,7 @@ def build_specialists(box: ToolBox, meter: UsageMeter, model_factory: ModelFacto
         except LimitExceeded:
             return "Specialist call limit reached for this request. Answer using the information already gathered."
         agent = agent_cls(
+            name=label,  # shows up as gen_ai.agent.name so traces can tell the specialists apart
             model=model_factory(SPECIALIST_MAX_OUTPUT),
             system_prompt=system,
             tools=[direct[n] for n in tool_names],
@@ -134,6 +135,7 @@ def build_orchestrator(box: ToolBox, meter: UsageMeter, model_factory: ModelFact
     orch_ref: list[Agent] = []
     tools = build_direct_tools(box) + build_specialists(box, meter, model_factory, model_id, orch_ref, agent_cls)
     agent = agent_cls(
+        name="orchestrator",
         model=model_factory(meter.limits["mainMaxOutputTokens"]),
         system_prompt=prompts.ORCHESTRATOR,
         tools=tools,

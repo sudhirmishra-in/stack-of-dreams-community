@@ -108,7 +108,7 @@ class AssistantPipeline:
                     self.ledger.count_rejection(sub, limits)
                     log("assistant_rejected", correlationId=correlation_id, stage="classifier")
                     raise OutOfScope(REFUSAL_OUT_OF_SCOPE, details={"stage": "classifier"})
-            payload = self._payload(message, history, req, limits)
+            payload = self._payload(message, history, req, limits, correlation_id)
             result = self.invoker.invoke(payload, runtime_session_id(sub, req.sessionId), _user_key(sub), limits.request_timeout_seconds)
         except OutOfScope:
             raise
@@ -169,12 +169,13 @@ class AssistantPipeline:
 
     # ---------- helpers ----------
 
-    def _payload(self, message: str, history: list[dict[str, str]], req: AssistantRequest, limits: QuotaLimits) -> dict[str, Any]:
+    def _payload(self, message: str, history: list[dict[str, str]], req: AssistantRequest, limits: QuotaLimits, correlation_id: str = "") -> dict[str, Any]:
         ctx = {k: v[:40] for k, v in (req.context or {}).items() if k in ("zipCode", "resourceId") and isinstance(v, str)}
         return {
             "prompt": message,
             "history": history,
             "context": ctx,
+            "correlationId": correlation_id,  # lets one request be followed from the API log into the runtime log and trace
             "limits": {
                 "maxModelInvocations": limits.max_model_invocations,
                 "maxToolIterations": limits.max_tool_iterations,
