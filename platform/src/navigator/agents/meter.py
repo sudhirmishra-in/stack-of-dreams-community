@@ -31,6 +31,7 @@ class UsageMeter:
     by_model: dict[str, list[int]] = field(default_factory=dict)
     model_invocations: int = 0
     specialist_calls: int = 0
+    specialists: dict[str, int] = field(default_factory=dict)  # per specialist name, for the metrics the API emits
     tool_calls: int = 0
     tripped: str | None = None
     _inflight_tokens: int = 0
@@ -74,14 +75,16 @@ class UsageMeter:
         self.tool_calls += 1
         return None
 
-    def take_specialist(self) -> None:
+    def take_specialist(self, name: str = "unknown") -> None:
         if self.specialist_calls >= self.limits["maxSpecialistCalls"]:
             raise LimitExceeded("specialist call limit reached")
         self.specialist_calls += 1
+        self.specialists[name] = self.specialists.get(name, 0) + 1
 
     def usage_payload(self) -> dict[str, Any]:
         return {
             "modelInvocations": self.model_invocations,
             "specialistCalls": self.specialist_calls,
+            "specialists": dict(self.specialists),
             "byModel": [{"modelId": m, "inputTokens": i, "outputTokens": o} for m, (i, o) in self.by_model.items()],
         }

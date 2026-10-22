@@ -66,6 +66,10 @@ Parameters:
     Description: >
       Hard ceiling on parallel API invocations (cost and abuse guard). A map view fires 20-40 parallel
       tile/sprite/glyph requests through the API, so this must not be set too low.
+  MetricsNamespace:
+    Type: String
+    Default: CommunityNavigator/Production
+    Description: CloudWatch namespace for the application metrics (the older Navigator namespace is unchanged).
   AlarmEmail:
     Type: String
     Default: ''
@@ -153,6 +157,7 @@ Resources:
           ENV_NAME: !Ref EnvName
           DATA_TABLE: !Ref DataTable
           INGEST_CONTACT: !Ref IngestContact
+          METRICS_NAMESPACE: !Ref MetricsNamespace
           SOURCE_OSM_ENABLED: 'true'
           SOURCE_NYC_CFC_ENABLED: 'true'
           SOURCE_211_ENABLED: 'false'          # stays off until 211 access is authorized
@@ -171,6 +176,51 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/navigator-ingest-${EnvName}
       RetentionInDays: 30
+
+  # Hourly: reports how many hours ago each data source last synced SUCCESSFULLY (DataSyncAge). It exists because the ingest
+  # Lambda cannot report that it has stopped running. Read-only on the data table; emits metrics through log lines only.
+  FreshnessFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      FunctionName: !Sub navigator-freshness-${EnvName}
+      CodeUri: .
+      Handler: navigator.ingest.freshness.handler
+      MemorySize: 128
+      Timeout: 20
+      ReservedConcurrentExecutions: 1
+      Environment:
+        Variables:
+          ENV_NAME: !Ref EnvName
+          DATA_TABLE: !Ref DataTable
+          METRICS_NAMESPACE: !Ref MetricsNamespace
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Sid: ReadSyncStateOnly
+              Effect: Allow
+              Action: [dynamodb:GetItem]
+              Resource: !GetAtt DataTable.Arn
+      # Deliberately NO write access, no usage-table access, no Bedrock/AgentCore/Location, no PutMetricData.
+
+  FreshnessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/navigator-freshness-${EnvName}
+      RetentionInDays: 30
+
+  FreshnessSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub navigator-freshness-${EnvName}
+      ScheduleExpression: rate(1 hour)
+      FlexibleTimeWindow: {Mode: 'OFF'}
+      State: !Ref SchedulesState
+      Target:
+        Arn: !GetAtt FreshnessFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        RetryPolicy: {MaximumRetryAttempts: 0, MaximumEventAgeInSeconds: 1800}
 
   # ------------------------------------------------------------------ Google sign-up allowlist
   # Cognito PRE SIGN-UP trigger: only emails on the allowlist may create a new account with Google. Attaching it to the
@@ -229,7 +279,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: lambda:InvokeFunction
-                Resource: !GetAtt IngestFunction.Arn
+                Resource: [!GetAtt IngestFunction.Arn, !GetAtt FreshnessFunction.Arn]
 
   # Incremental OSM daily; full weekly (the only run allowed to deactivate records); CFC monthly (quarterly data).
   OsmIncrementalSchedule:
@@ -291,6 +341,7 @@ Resources:
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
           COGNITO_CLIENT_ID: !Ref CognitoClientId
           ADMIN_GROUP: pilot-admin
+          METRICS_NAMESPACE: !Ref MetricsNamespace
           ALLOWED_ORIGINS: !Join [',', !Ref AllowedOrigins]
           AGENT_RUNTIME_ARN: !Ref AgentRuntimeArn
           AGENT_REGION: !Ref AWS::Region

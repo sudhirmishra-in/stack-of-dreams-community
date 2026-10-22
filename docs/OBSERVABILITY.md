@@ -42,6 +42,41 @@ Canary question with a unique string and a correlation id, plus the standard ans
 - Not checked: the CloudWatch GenAI Observability console view (data was read from the log stream).
 - Packaged versions at deploy: aws-opentelemetry-distro 0.21.0, OpenTelemetry SDK 1.44.0, Strands 1.62.0; tests also pass against exactly these.
 
+## 2c. Phase 4: custom metrics (lean set), BUILT LOCALLY, NOT DEPLOYED
+
+Namespace `CommunityNavigator/Production` (stack parameter `MetricsNamespace`), every series also has `Environment` (`pilot`).
+The older `Navigator` metrics, dashboard and 8 alarms are unchanged. Emitted as CloudWatch Embedded Metric Format on stdout
+(no new IAM, no `PutMetricData`). Code: `ingest/appmetrics.py` (emitter), `gateway/request_metrics.py`, `ingest/sync_metrics.py`,
+`ingest/freshness.py`.
+
+| Metric (unit)                                                                                                                      | Dimensions                                        | Emitted by (single point)                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| AgentInvocations (Count)                                                                                                           | AgentType, AgentName                              | API at settle: 1 for the orchestrator/research agent, plus each specialist the runtime reports; also 1 on agent failure |
+| ModelInvocations (Count)                                                                                                           | AgentType                                         | API at settle                                                                                                           |
+| AgentErrors (Count)                                                                                                                | AgentType                                         | API when the runtime/harness fails or times out                                                                         |
+| AgentLatency (ms)                                                                                                                  | AgentType                                         | API: measured around the runtime/harness call, one sample per successful request (percentiles come from raw samples)    |
+| ModelInputTokens, ModelOutputTokens (Count)                                                                                        | AgentType, ModelId                                | API at settle, from usage the agent reported (classifier tokens under the classifier model)                             |
+| EstimatedModelCost (USD, estimate)                                                                                                 | AgentType, ModelId                                | API at settle, from `pricing.json`; unknown model: `ModelCostUnavailable` instead                                       |
+| UsageUnreported (Count)                                                                                                            | AgentType                                         | API when the agent did not report usage (no tokens or cost are invented)                                                |
+| ToolInvocations, ToolErrors (Count)                                                                                                | AgentType                                         | API, from counts the runtime reports (per-tool detail stays in logs and traces)                                         |
+| QuotaRejections (Count)                                                                                                            | Reason                                            | API's single error handler on HTTP 429                                                                                  |
+| AuthenticationFailures (Count)                                                                                                     | Reason: unauthorized, pending_approval, forbidden | API's single error handler on 401/403                                                                                   |
+| ResourceSearches, ResourceSearchNoResults (Count)                                                                                  | none                                              | API search handler                                                                                                      |
+| DataSyncSuccess, DataSyncFailures, SourceApiErrors, RecordsInserted, RecordsUpdated, RecordsRejected (Count), DataSyncDuration (s) | Source                                            | Ingest Lambda, once per source run (skipped/disabled runs emit nothing)                                                 |
+| DataSyncAge (hours)                                                                                                                | Source                                            | New hourly `navigator-freshness-*` Lambda (read-only): the only way to notice that the ingest job stopped running       |
+
+Rules (enforced and tested): only listed metric names; only the dimensions above (identifiers such as user, session, request,
+trace id or e-mail are refused); dimension values come from fixed sets or a model-id pattern, otherwise `other`; invalid values are
+dropped; the emitter never raises into a request. No double counting: one emission point per metric; tokens come from the usage the
+agent reported, and a test requires emitted tokens to equal what the ledger charged; idempotent replays, blocked (401/403/429)
+requests and failed agent calls emit no token or cost metrics. Cost: custom metrics are billed per series ($0.30/month each);
+this set is about 48 series at most (about $14/month worst case, about $9 typical) plus negligible log ingestion and the hourly Lambda.
+Free provider metrics to use instead of custom copies: `AWS/Bedrock-AgentCore` (Invocations, Latency, Errors, Throttles, Sessions,
+ActiveSessionCount) and `AWS/Bedrock` (token counts by model, for cross-checking).
+
+Runtime change: the runtime now also reports `toolCalls`, `toolErrors` and `specialists` (per name) in its usage; the API accepts
+older runtimes that omit them. Deploy order is therefore not critical.
+
 ## 3. Deploy plan (every step needs owner approval)
 
 1. **Lower trace indexing first** (account-level X-Ray setting, us-east-2): `aws xray update-indexing-rule --region us-east-2 --name Default --rule '{"Probabilistic":{"DesiredSamplingPercentage":1}}'`. Currently 100 % (indexed spans beyond the 1 % included cost $0.75 per million). Rollback: set it back to 100.

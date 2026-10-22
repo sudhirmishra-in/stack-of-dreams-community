@@ -53,6 +53,7 @@ class SyncResult:
     mode: str = "incremental"
     counts: SyncCounts = field(default_factory=SyncCounts)
     error: str | None = None
+    duration_s: float = 0.0  # wall-clock seconds of this source's run (for the DataSyncDuration metric)
 
 
 def _upsert(store: DataStore, rec, counts: SyncCounts) -> str:
@@ -80,7 +81,7 @@ def _upsert(store: DataStore, rec, counts: SyncCounts) -> str:
     raise VersionConflict(rec.id)
 
 
-def sync_source(adapter: SourceAdapter, store: DataStore, *, mode: str = "auto") -> SyncResult:
+def _sync_source(adapter: SourceAdapter, store: DataStore, *, mode: str = "auto") -> SyncResult:
     sid = adapter.source_id
     now = utcnow()
     state = store.get_sync_state(sid)
@@ -208,6 +209,14 @@ def _record(store: DataStore, r: SyncResult, prev: dict[str, Any], started: str,
         {"startedAt": started, "endedAt": ended, "status": r.status, "mode": r.mode, "counts": r.counts.as_dict(), "error": r.error},
         ttl,
     )
+
+
+def sync_source(*args: Any, **kwargs: Any) -> SyncResult:
+    """Runs one source and records how long it took (the result's duration_s)."""
+    t0 = time.monotonic()
+    result = _sync_source(*args, **kwargs)
+    result.duration_s = round(time.monotonic() - t0, 2)
+    return result
 
 
 def sync_all(adapters: dict[str, SourceAdapter], store: DataStore, *, only: list[str] | None = None, mode: str = "auto") -> list[SyncResult]:

@@ -48,6 +48,7 @@ class Observed:
     resources: dict[str, dict] = field(default_factory=dict)
     activity_used: bool = False
     tool_calls: int = 0
+    tool_errors: int = 0
 
     def add_resource(self, view: dict) -> None:
         self.resources[view["id"]] = {

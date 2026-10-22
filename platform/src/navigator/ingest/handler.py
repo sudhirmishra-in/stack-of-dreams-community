@@ -13,6 +13,7 @@ from navigator.store.data_store import DataStore
 
 from .demo import seed_demo
 from .sync import sync_all
+from .sync_metrics import emit_sync_metrics
 
 
 def handler(event: dict[str, Any] | None, context: Any = None) -> dict[str, Any]:
@@ -27,6 +28,8 @@ def handler(event: dict[str, Any] | None, context: Any = None) -> dict[str, Any]
     only = [x for x in event.get("sources", []) if isinstance(x, str)] or None
     results = sync_all(adapters, store, only=only, mode=mode)
     seeded = seed_demo(store) if (s.seed_demo_enabled and event.get("seedDemo", True)) else 0
+    for r in results:
+        emit_sync_metrics(r)  # new namespace, once per source run (the existing Navigator metrics are emitted inside sync_source)
     summary = [{"source": r.source_id, "status": r.status, "mode": r.mode, "counts": r.counts.as_dict(), "error": r.error} for r in results]
     log("sync_complete", results=summary, demoSeeded=seeded)
     return {"results": summary, "demoSeeded": seeded}

@@ -24,6 +24,10 @@ class RuntimeUsage(BaseModel):
     modelInvocations: int = 0
     specialistCalls: int = 0
     byModel: list[ModelUsage] = Field(default_factory=list)
+    # Newer runtimes also report these; an older runtime simply omits them (the defaults keep it working).
+    toolCalls: int = Field(default=0, ge=0, le=1000)
+    toolErrors: int = Field(default=0, ge=0, le=1000)
+    specialists: dict[str, int] = Field(default_factory=dict)
 
 
 class RuntimeResult(BaseModel):

@@ -90,7 +90,7 @@ def build_specialists(box: ToolBox, meter: UsageMeter, model_factory: ModelFacto
 
     def run_specialist(label: str, system: str, tool_names: list[str], task: str) -> str:
         try:
-            meter.take_specialist()
+            meter.take_specialist(label)
         except LimitExceeded:
             return "Specialist call limit reached for this request. Answer using the information already gathered."
         agent = agent_cls(

@@ -14,6 +14,7 @@ Order (each step can stop the request, and nothing later runs):
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from dataclasses import replace
 from typing import Any
@@ -26,6 +27,7 @@ from navigator.models import AgentUsage, AssistantRequest, AssistantResponse, Us
 from navigator.quota.ledger import UsageLedger, next_day_reset, next_month_reset
 from navigator.quota.pricing import estimate_usd
 
+from . import request_metrics
 from .auth import Identity
 from .classifier import ClassifierError, IntentClassifier
 from .invoker import AgentInvoker, InvokerError, RuntimeResult, runtime_session_id
@@ -109,7 +111,9 @@ class AssistantPipeline:
                     log("assistant_rejected", correlationId=correlation_id, stage="classifier")
                     raise OutOfScope(REFUSAL_OUT_OF_SCOPE, details={"stage": "classifier"})
             payload = self._payload(message, history, req, limits, correlation_id)
+            started = time.monotonic()
             result = self.invoker.invoke(payload, runtime_session_id(sub, req.sessionId), _user_key(sub), limits.request_timeout_seconds)
+            latency_ms = int((time.monotonic() - started) * 1000)
         except OutOfScope:
             raise
         except ClassifierError as e:
@@ -119,13 +123,14 @@ class AssistantPipeline:
         except InvokerError as e:
             self._safe_release(reservation, classifier_in)
             metrics.emit("AgentInvokeFailed", 1)
+            request_metrics.emit_failure("navigator")
             log("agent_error", correlationId=correlation_id, error=str(e))
             raise ServiceUnavailable("The assistant is unavailable right now. Please try again.", headers={"Retry-After": "10"}) from e
         except Exception:
             self._safe_release(reservation, classifier_in)
             raise
 
-        return self._finish(sub, reservation, req, result, classifier_in, classifier_out, classifier_usd, limits, correlation_id)
+        return self._finish(sub, reservation, req, result, classifier_in, classifier_out, classifier_usd, limits, correlation_id, latency_ms=latency_ms)
 
     def _handle_research(self, identity: Identity, req: AssistantRequest, correlation_id: str) -> AssistantResponse:
         """The general assistant: the SAME gates as the navigator (pending approval, kill switch, disabled user, atomic
@@ -156,16 +161,19 @@ class AssistantPipeline:
 
         reservation = ledger.reserve(sub, key, limits)  # atomic quota + concurrency, or 429/409/503; nothing is spent yet
         try:
+            started = time.monotonic()
             result = self.research_invoker.invoke({"prompt": message, "history": history}, runtime_session_id(sub, "research:" + req.sessionId), _user_key(sub), limits.request_timeout_seconds)
+            latency_ms = int((time.monotonic() - started) * 1000)
         except InvokerError as e:
             self._safe_release(reservation, 0, ledger)
             metrics.emit("AgentInvokeFailed", 1)
+            request_metrics.emit_failure("research")
             log("agent_error", correlationId=correlation_id, agent="research", error=str(e))
             raise ServiceUnavailable("The assistant is unavailable right now. Please try again.", headers={"Retry-After": "10"}) from e
         except Exception:
             self._safe_release(reservation, 0, ledger)
             raise
-        return self._finish(sub, reservation, req, result, 0, 0, 0.0, limits, correlation_id, ledger=ledger, agent_id="research")
+        return self._finish(sub, reservation, req, result, 0, 0, 0.0, limits, correlation_id, ledger=ledger, agent_id="research", latency_ms=latency_ms)
 
     # ---------- helpers ----------
 
@@ -194,7 +202,7 @@ class AssistantPipeline:
             log("release_failed", error=type(e).__name__)
 
     def _finish(self, sub, reservation, req, result: RuntimeResult, c_in, c_out, c_usd, limits, correlation_id,
-                ledger: UsageLedger | None = None, agent_id: str = "community-navigator") -> AssistantResponse:
+                ledger: UsageLedger | None = None, agent_id: str = "community-navigator", latency_ms: int = 0) -> AssistantResponse:
         ledger = ledger or self.ledger
         usage = result.usage
         if usage is None:
@@ -228,6 +236,11 @@ class AssistantPipeline:
             )
         except ServiceUnavailable:
             metrics.emit("SettleFailed", 1)  # work is done; the reservation stays charged (conservative)
+        request_metrics.emit_success(
+            "research" if agent_id == "research" else "navigator",
+            usage=usage, latency_ms=latency_ms, model_invocations=invocations if usage is not None else None,
+            classifier_model=self.settings.classifier_model_id, classifier_tokens=(c_in, c_out),
+        )
         metrics.emit("AssistantRequests", 1)
         metrics.emit("ModelTokens", in_tok + out_tok)
         if usd is not None:

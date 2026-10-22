@@ -57,12 +57,18 @@ class ToolBox:
     def _wrap(self, fn: Callable[[], dict[str, Any]]) -> str:
         self.observed.tool_calls += 1
         try:
-            return json.dumps({"notice": DATA_NOTICE, **fn()}, default=str)
+            out = fn()
+            if isinstance(out, dict) and "error" in out:
+                self.observed.tool_errors += 1  # the tool ran but reported it could not answer (e.g. no map location)
+            return json.dumps({"notice": DATA_NOTICE, **out}, default=str)
         except ApiError as e:
+            self.observed.tool_errors += 1
             return json.dumps({"error": e.message})
         except LocationUnavailable:
+            self.observed.tool_errors += 1
             return json.dumps({"error": "location service unavailable; do not estimate distances or travel times"})
         except Exception:
+            self.observed.tool_errors += 1
             return json.dumps({"error": "lookup failed"})
 
     # ---- resource discovery ----

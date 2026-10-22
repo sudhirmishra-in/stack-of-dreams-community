@@ -91,4 +91,4 @@ def answer(payload: dict[str, Any], box_factory: Callable[[UsageMeter, Observed]
         {"sourceId": r["sourceId"], "resourceId": rid, "isDemoData": r["isDemoData"], "verification": r["verification"], "freshness": r["freshness"]}
         for rid, r in observed.resources.items()
     ]
-    return {"response": safe, "citations": citations, "uncertainty": build_uncertainty(observed, meter, notes), "usage": meter.usage_payload()}
+    return {"response": safe, "citations": citations, "uncertainty": build_uncertainty(observed, meter, notes), "usage": {**meter.usage_payload(), "toolCalls": observed.tool_calls, "toolErrors": observed.tool_errors}}

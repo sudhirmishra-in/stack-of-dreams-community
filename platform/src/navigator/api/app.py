@@ -23,7 +23,7 @@ from typing import Any, Callable
 from pydantic import BaseModel, ValidationError
 
 from navigator.config import QuotaLimits, Settings
-from navigator.ingest import metrics
+from navigator.ingest import appmetrics, metrics
 from navigator.errors import ApiError, BadRequest, Forbidden, NotFound, PendingApproval, ServiceUnavailable, Unauthorized
 from navigator.gateway.auth import Identity, JwtVerifier
 from navigator.gateway.pipeline import AssistantPipeline, build_usage
@@ -181,6 +181,12 @@ class App:
             if e.status >= 500:
                 metrics.emit("Api5xx", 1)
                 log("api_error", correlationId=cid, code=e.code, path=path)
+            elif e.status == 401:
+                appmetrics.emit({"AuthenticationFailures": 1}, Reason="unauthorized")
+            elif e.status == 403:
+                appmetrics.emit({"AuthenticationFailures": 1}, Reason="pending_approval" if e.code == "pending_approval" else "forbidden")
+            elif e.status == 429 and e.code == "quota_exceeded":
+                appmetrics.emit({"QuotaRejections": 1}, Reason=str(e.details.get("reason", "other")))
             return _json(e.status, e.body(cid), cid, e.headers)
         except Exception as e:  # never leak internals to the browser
             log("unhandled_error", correlationId=cid, error=type(e).__name__, path=path)
@@ -212,7 +218,11 @@ class App:
             raise Forbidden("Pilot access is disabled for this account.")
         self.d.ledger.count_event(req.identity.sub, "search", eff.limits.searches_per_user_day)  # type: ignore[union-attr]
         sr = _validate(SearchRequest, req.body)
-        return 200, self.d.search.search(sr, req.correlation_id, self._geocode_gate(req.identity.sub, eff.limits))  # type: ignore[union-attr]
+        result = self.d.search.search(sr, req.correlation_id, self._geocode_gate(req.identity.sub, eff.limits))  # type: ignore[union-attr]
+        appmetrics.emit({"ResourceSearches": 1})
+        if result.totalResults == 0:
+            appmetrics.emit({"ResourceSearchNoResults": 1})
+        return 200, result
 
     def get_resource(self, req: Request, id: str):
         if not _ID.match(id):
