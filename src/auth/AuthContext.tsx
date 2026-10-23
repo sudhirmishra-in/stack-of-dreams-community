@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { authService as defaultService } from '../services/authService';
 import type { AuthProvider, AuthService, AuthUser } from '../types/auth';
+import { clearAllStoredConversations } from '../utils/session';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -87,6 +88,8 @@ export function AuthProvider({
   );
 
   const signOut = useCallback(async () => {
+    // Before leaving: an identity-provider sign-out redirects the page and never returns here.
+    clearAllStoredConversations();
     await service.signOut();
     setUser(null);
     setStatus('unauthenticated');

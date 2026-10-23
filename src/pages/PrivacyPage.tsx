@@ -21,6 +21,15 @@ export default function PrivacyPage() {
           the ZIP code you search. It is sent to AWS services to produce an answer (see below).
         </li>
         <li>
+          <strong>Your conversation:</strong> it is saved in your browser (local storage on your own
+          device) so it is still there when you come back. It stays until you start a new chat or
+          sign out, and you can also clear your browser data. While you chat, the AI service may
+          keep your recent messages in memory for a few minutes (idle sessions end after about 2
+          minutes and every session after 15). The service also keeps a copy of each answer for
+          about 2 days (the database can take a little longer to delete expired items) so that a
+          retried request is not counted twice.
+        </li>
+        <li>
           <strong>Usage counters:</strong> how many requests and estimated tokens each account has
           used, so daily and monthly limits can be enforced. Counters are deleted automatically
           after about 35 days (daily) and 70 days (monthly).

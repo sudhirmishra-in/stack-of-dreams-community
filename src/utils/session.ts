@@ -37,11 +37,38 @@ export function loadConversation(agentId: string): Conversation {
   return newConversation(agentId);
 }
 
+// Browser storage is small (about 5 MB for the whole site), so a long chat keeps only its newest part.
+const MAX_STORED_MESSAGES = 200;
+const MAX_STORED_BYTES = 400_000;
+
+/** The newest messages that fit the limits (the full conversation stays in memory while the tab is open). */
+function trimForStorage(conversation: Conversation): Conversation {
+  let messages = conversation.messages.slice(-MAX_STORED_MESSAGES);
+  let json = JSON.stringify({ ...conversation, messages });
+  while (json.length > MAX_STORED_BYTES && messages.length > 1) {
+    messages = messages.slice(Math.max(1, Math.ceil(messages.length / 10)));
+    json = JSON.stringify({ ...conversation, messages });
+  }
+  return { ...conversation, messages };
+}
+
 export function saveConversation(conversation: Conversation): void {
   try {
-    localStorage.setItem(STORAGE_PREFIX + conversation.agentId, JSON.stringify(conversation));
+    const trimmed = trimForStorage(conversation);
+    localStorage.setItem(STORAGE_PREFIX + conversation.agentId, JSON.stringify(trimmed));
   } catch {
     /* storage full or disabled: history just won't persist */
+  }
+}
+
+/** Removes every saved chat from this browser (used on sign-out so the next person on this computer cannot read them). */
+export function clearAllStoredConversations(): void {
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith(STORAGE_PREFIX)) localStorage.removeItem(key);
+    }
+  } catch {
+    /* ignore */
   }
 }
 

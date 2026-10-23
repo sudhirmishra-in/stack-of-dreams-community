@@ -30,13 +30,18 @@ export function ChatHeader({ agent, isMock, onOpenSidebar, onNewConversation }: 
         >
           {isMock ? 'Mock mode' : 'Live API'}
         </span>
+        <span className="hidden text-[11px] text-muted md:inline">
+          Saved in this browser until you start a new chat
+        </span>
       </div>
       <button
         type="button"
         onClick={onNewConversation}
+        aria-label="New chat"
+        title="Start a new chat. The conversation saved in this browser is replaced."
         className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium hover:bg-surface-2"
       >
-        <Plus size={14} aria-hidden /> New
+        <Plus size={14} aria-hidden /> New chat
       </button>
     </div>
   );

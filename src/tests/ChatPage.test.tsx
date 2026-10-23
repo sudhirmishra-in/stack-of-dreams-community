@@ -72,7 +72,7 @@ describe('ChatPage', () => {
     renderChat();
     await user.click(screen.getAllByRole('button', { name: /What is agentic AI/ })[0]);
     await waitFor(() => expect(screen.getByText('ok')).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: /^New$/ }));
+    await user.click(screen.getByRole('button', { name: 'New chat' }));
     expect(screen.getByText('How can I help today?')).toBeInTheDocument();
   });
 });
