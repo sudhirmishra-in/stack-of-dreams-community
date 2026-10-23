@@ -249,3 +249,14 @@ def test_dashboard_never_exposes_individual_users():
     text = _body_text().lower()
     for bad in IDENTIFYING - {"user"}:
         assert f'"{bad}"' not in text
+
+
+def test_application_metrics_are_always_read_from_the_stack_region():
+    """Our custom metrics live in the region the stack runs in (us-east-2). Only AWS provider metrics may point at another
+    region (the general assistant's Bedrock calls run in us-east-1). A custom metric row with another region would read an
+    empty namespace and silently show no data."""
+    for w, rows in metric_rows():
+        for row in rows:
+            if row and not isinstance(row[0], dict) and row[0] == NS:
+                opts = next((x for x in row if isinstance(x, dict)), {})
+                assert opts.get("region", "us-east-2") == "us-east-2", f"{row[1]} in '{w['properties']['title']}' reads region {opts['region']}"
