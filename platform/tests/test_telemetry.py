@@ -92,11 +92,11 @@ def test_credential_identifiers_are_scrubbed_but_routing_details_are_kept():
     provider, exporter = provider_with_exporter()
     assert telemetry.install_span_scrubber(provider)
     with provider.get_tracer("t").start_as_current_span("DynamoDB.GetItem") as span:
-        span.set_attribute("aws.auth.account.access_key", "ASIAEXAMPLEKEYID1234")
+        span.set_attribute("aws.auth.account.access_key", "ASIA-fake-test-key-id")
         span.set_attribute("aws.dynamodb.table_names", ["navigator-data-pilot"])
         span.set_attribute("db.operation", "GetItem")
     out = exporter.get_finished_spans()[0]
-    assert "aws.auth.account.access_key" not in out.attributes and "ASIAEXAMPLEKEYID1234" not in dump(exporter)
+    assert "aws.auth.account.access_key" not in out.attributes and "ASIA-fake-test-key-id" not in dump(exporter)
     assert out.attributes["db.operation"] == "GetItem" and out.attributes["aws.dynamodb.table_names"] == ("navigator-data-pilot",)
 
 
